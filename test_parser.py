@@ -45,3 +45,8 @@ def test_vector():
     assert scheme.parse("[1 [2 [3 []]]]") == [
         SVect([SNum(1), SVect([SNum(2), SVect([SNum(3), SVect([])])])]),
     ]
+
+
+def test_quote():
+    assert scheme.parse("'(1 2 3)") == scheme.parse("(quote (1 2 3))")
+    assert str(scheme.parse("(quote (1 2 3))")[0]) == "'(1 2 3)"

@@ -8,7 +8,7 @@ class SExp:
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, order=True)
 class SNum(SExp):
     """A lisp number"""
     value: int
@@ -44,6 +44,8 @@ class SVect(SExp):
     def __str__(self) -> str:
         items = self.to_list_items()
         if items is not None:
+            if len(items) == 2 and items[0] == SSym('quote'):
+                return f"'{items[1]}"
             return f"({' '.join(str(i) for i in items)})"
         return f"[{' '.join(str(i) for i in self.items)}]"
 
@@ -62,12 +64,16 @@ def parse(x: str) -> List[SExp]:
         .replace(')', ' ) ')
         .replace('[', ' [ ')
         .replace(']', ' ] ')
+        .replace("'", " ' ")
         .split()
     )
 
     def parse(tokens: List[str]) -> Tuple[SExp, List[str]]:
         if not tokens:
             raise "Parse Error"
+        elif tokens[0] == "'":
+            item, tokens = parse(tokens[1:])
+            return to_slist([SSym("quote"), item]), tokens
         elif tokens[0] == '[':
             vector = []
             tokens = tokens[1:]
