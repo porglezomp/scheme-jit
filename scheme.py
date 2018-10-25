@@ -113,7 +113,15 @@ class PairIter:
 
 
 class NilType(SExp):
-    pass
+    def __iter__(self):
+        return self.NilIterator()
+
+    class NilIterator:
+        def __next__(self):
+            raise StopIteration
+
+        def __iter__(self):
+            return self
 
 
 Nil = NilType()
@@ -131,6 +139,7 @@ def to_slist(x: Sequence[SExp]) -> SList:
 
 @dataclass(frozen=True)
 class SFunction(SExp):
+    name: SSym
     formals: SList
     body: SList
 
@@ -186,11 +195,15 @@ def parse(x: str) -> List[SExp]:
             if items[0] == SSym('define'):
                 assert len(items) >= 3, 'Missing parts of function def'
                 assert isinstance(items[1], SPair), 'Expected formals list'
+
                 assert items[1] is not Nil, 'Missing function name'
+                func_name = items[1].first
+                assert isinstance(func_name, SSym)
 
                 formals = items[1].second
                 assert isinstance(formals, SPair) or formals is Nil
                 return SFunction(
+                    func_name,
                     cast(SList, formals),
                     to_slist(items[2:])
                 ), tokens[1:]
