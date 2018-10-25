@@ -79,6 +79,7 @@ class ParserTestCase(unittest.TestCase):
         self.assertEqual(
             [
                 SFunction(
+                    SSym('funcy'),
                     scheme.to_slist([SSym('spam'), SSym('egg')]),
                     scheme.to_slist(
                         [scheme.to_slist(
@@ -87,6 +88,29 @@ class ParserTestCase(unittest.TestCase):
                 scheme.to_slist(
                     [SSym('funcy'), SNum(42), SNum(43)]
                 )
+            ],
+            scheme.parse(prog)
+        )
+
+    def test_lambda(self):
+        prog = '(lambda (spam egg) (+ spam egg)) (lambda () 42)'
+        self.assertEqual(
+            [
+                SFunction(
+                    SSym('lambda0'),
+                    scheme.to_slist([SSym('spam'), SSym('egg')]),
+                    scheme.to_slist(
+                        [scheme.to_slist(
+                            [SSym('+'), SSym('spam'), SSym('egg')])]
+                    ),
+                    is_lambda=True
+                ),
+                SFunction(
+                    SSym('lambda1'),
+                    Nil,
+                    scheme.to_slist([SNum(42)]),
+                    is_lambda=True
+                ),
             ],
             scheme.parse(prog)
         )

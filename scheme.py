@@ -65,7 +65,7 @@ class SPair(SExp):
     >>> s_list = SPair(SNum(42), SPair(SSym('egg'), Nil))
     >>> str(s_list)
     '(42 egg)'
-    >>> list(s_list)SExpr
+    >>> list(s_list)
     [SNum(value=42), SSym(name='egg')]
     """
     first: SExp
@@ -143,6 +143,8 @@ class SFunction(SExp):
     formals: SList
     body: SList
 
+    is_lambda: bool = False
+
 
 @dataclass(frozen=True)
 class SConditional(SExp):
@@ -161,6 +163,8 @@ def parse(x: str) -> List[SExp]:
         .replace("'", " ' ")
         .split()
     )
+
+    lambda_names = lambda_name_generator()
 
     def parse(tokens: List[str]) -> Tuple[SExp, List[str]]:
         if not tokens:
@@ -192,6 +196,7 @@ def parse(x: str) -> List[SExp]:
                     items[2],
                     items[3]
                 ), tokens[1:]
+
             if items[0] == SSym('define'):
                 assert len(items) >= 3, 'Missing parts of function def'
                 assert isinstance(items[1], SPair), 'Expected formals list'
@@ -208,6 +213,20 @@ def parse(x: str) -> List[SExp]:
                     to_slist(items[2:])
                 ), tokens[1:]
 
+            if items[0] == SSym('lambda'):
+                assert len(items) >= 3, 'Missing parts of lambda def'
+                formals = items[1]
+                assert (
+                    isinstance(formals, SPair) or formals is Nil
+                ), 'Expected formals list'
+
+                return SFunction(
+                    SSym(next(lambda_names)),
+                    cast(SList, formals),
+                    to_slist(items[2:]),
+                    is_lambda=True
+                ), tokens[1:]
+
             return to_slist(items), tokens[1:]
         elif tokens[0].isdigit():
             return SNum(int(tokens[0])), tokens[1:]
@@ -219,3 +238,10 @@ def parse(x: str) -> List[SExp]:
         result, tokens = parse(tokens)
         results.append(result)
     return results
+
+
+def lambda_name_generator():
+    n = 0
+    while True:
+        yield f'lambda{n}'
+        n += 1

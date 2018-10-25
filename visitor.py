@@ -1,14 +1,15 @@
-import typing
 from typing import List, Union
 
-import scheme
-from scheme import SExp, SNum, SSym, SVect, SPair, SConditional, SFunction, Nil
+from scheme import (
+    SExp, SNum, SSym, SVect, SPair, SConditional, SFunction, Nil
+)
 
 
 class Visitor:
     """
     Base class for traversing scheme programs.
 
+    >>> import scheme
     >>> prog = '(define (spam egg) (if (> spam egg) [1 true] [2 false]))'
     >>> parsed = scheme.parse(prog)
     >>> _DoctestVisitor().visit(parsed)
@@ -44,6 +45,16 @@ class Visitor:
     2
     SExp
     false
+
+    >>> prog = '(lambda (spam) 42)'
+    >>> parsed = scheme.parse(prog)
+    >>> _DoctestVisitor().visit(parsed)
+    SExp
+    SFunction
+    SExp
+    spam
+    SExp
+    42
 
     """
 
@@ -88,7 +99,8 @@ class Visitor:
             self.visit(pair.second)
 
     def visit_SFunction(self, func: SFunction):
-        self.visit(func.name)
+        if not func.is_lambda:
+            self.visit(func.name)
 
         for param in func.formals:
             self.visit(param)
