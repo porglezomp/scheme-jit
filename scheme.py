@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Iterable, Sequence, Union
+from typing import List, Optional, Tuple, Iterable, Sequence, Union, cast
 
 
 @dataclass
@@ -46,7 +46,7 @@ class SVect(SExp):
         return f"[{' '.join(str(i) for i in self.items)}]"
 
 
-@dataclass
+@dataclass(frozen=True)
 class SPair(SExp):
     """A scheme pair.
 
@@ -65,7 +65,7 @@ class SPair(SExp):
     >>> s_list = SPair(SNum(42), SPair(SSym('egg'), Nil))
     >>> str(s_list)
     '(42 egg)'
-    >>> list(s_list)
+    >>> list(s_list)SExpr
     [SNum(value=42), SSym(name='egg')]
     """
     first: SExp
@@ -129,6 +129,19 @@ def to_slist(x: Sequence[SExp]) -> SList:
     return acc
 
 
+@dataclass(frozen=True)
+class SFunction(SExp):
+    formals: SList
+    body: SList
+
+
+@dataclass(frozen=True)
+class SConditional(SExp):
+    test: SExp
+    then_expr: SExp
+    else_expr: SExp
+
+
 def parse(x: str) -> List[SExp]:
     tokens = (
         x
@@ -159,6 +172,29 @@ def parse(x: str) -> List[SExp]:
             while tokens[0] != ')':
                 item, tokens = parse(tokens)
                 items.append(item)
+
+            if len(items) == 0:
+                return to_slist(items), tokens[1:]
+
+            if items[0] == SSym('if'):
+                assert len(items) == 4, 'Missing parts of conditional'
+                return SConditional(
+                    items[1],
+                    items[2],
+                    items[3]
+                ), tokens[1:]
+            if items[0] == SSym('define'):
+                assert len(items) >= 3, 'Missing parts of function def'
+                assert isinstance(items[1], SPair), 'Expected formals list'
+                assert items[1] is not Nil, 'Missing function name'
+
+                formals = items[1].second
+                assert isinstance(formals, SPair) or formals is Nil
+                return SFunction(
+                    cast(SList, formals),
+                    to_slist(items[2:])
+                ), tokens[1:]
+
             return to_slist(items), tokens[1:]
         elif tokens[0].isdigit():
             return SNum(int(tokens[0])), tokens[1:]

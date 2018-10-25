@@ -1,7 +1,7 @@
 import unittest
 
 import scheme
-from scheme import SSym, SVect, SNum, SPair, Nil
+from scheme import SSym, SVect, SNum, SPair, Nil, SConditional, SFunction
 
 
 class ParserTestCase(unittest.TestCase):
@@ -39,10 +39,10 @@ class ParserTestCase(unittest.TestCase):
             [scheme.to_slist([SNum(1), SNum(2), SNum(3)])],
         )
         self.assertEqual(
-            scheme.parse("(if (< x 0) 1 2)"),
+            scheme.parse("(spam (< x 0) 1 2)"),
             [
                 scheme.to_slist([
-                    SSym("if"),
+                    SSym("spam"),
                     scheme.to_slist([SSym("<"), SSym("x"), SNum(0)]),
                     SNum(1),
                     SNum(2),
@@ -63,6 +63,34 @@ class ParserTestCase(unittest.TestCase):
 
         # fixme?
         # self.assertEqual(str(scheme.parse("(quote (1 2 3))")[0]), "'(1 2 3)")
+
+    def test_conditional(self):
+        prog = '(if true 42 43) (if false 44 45)'
+        self.assertEqual(
+            [
+                SConditional(SSym('true'), SNum(42), SNum(43)),
+                SConditional(SSym('false'), SNum(44), SNum(45)),
+            ],
+            scheme.parse(prog)
+        )
+
+    def test_function_def(self):
+        prog = '(define (funcy spam egg) (+ spam egg)) (funcy 42 43)'
+        self.assertEqual(
+            [
+                SFunction(
+                    scheme.to_slist([SSym('spam'), SSym('egg')]),
+                    scheme.to_slist(
+                        [scheme.to_slist(
+                            [SSym('+'), SSym('spam'), SSym('egg')])])
+                ),
+                scheme.to_slist(
+                    [SSym('funcy'), SNum(42), SNum(43)]
+                )
+            ],
+            scheme.parse(prog)
+        )
+
 
 
 if __name__ == '__main__':
