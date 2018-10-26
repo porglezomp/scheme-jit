@@ -1,14 +1,31 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Iterable, Sequence, Union, cast
+from typing import (
+    List, Optional, Tuple, Iterable, Sequence, Union, cast, TYPE_CHECKING)
+
+if TYPE_CHECKING:
+    from environment import Environment
 
 
-@dataclass
 class SExp:
     """An s-expression base class"""
-    pass
+    def __init__(self):
+        self._environment: Optional[Environment] = None
+
+    @property
+    def environment(self) -> Environment:
+        if self._environment is None:
+            raise Exception('Environment not set')
+
+        return self._environment
+
+    @environment.setter
+    def environment(self, env: Environment):
+        self._environment = env
 
 
-@dataclass(frozen=True, order=True)
+@dataclass(order=True)
 class SNum(SExp):
     """A lisp number"""
     value: int
@@ -16,14 +33,20 @@ class SNum(SExp):
     def __str__(self):
         return str(self.value)
 
+    def __hash__(self):
+        return hash(self.value)
 
-@dataclass(frozen=True)
+
+@dataclass
 class SSym(SExp):
     """A lisp symbol"""
     name: str
 
     def __str__(self):
         return self.name
+
+    def __hash__(self):
+        return hash(self.name)
 
 
 @dataclass
@@ -46,7 +69,7 @@ class SVect(SExp):
         return f"[{' '.join(str(i) for i in self.items)}]"
 
 
-@dataclass(frozen=True)
+@dataclass
 class SPair(SExp):
     """A scheme pair.
 
@@ -123,6 +146,12 @@ class NilType(SExp):
         def __iter__(self):
             return self
 
+    def __str__(self):
+        return 'Nil'
+
+    def __repr__(self):
+        return str(self)
+
 
 Nil = NilType()
 
@@ -137,7 +166,7 @@ def to_slist(x: Sequence[SExp]) -> SList:
     return acc
 
 
-@dataclass(frozen=True)
+@dataclass
 class SFunction(SExp):
     name: SSym
     formals: SList
@@ -146,7 +175,7 @@ class SFunction(SExp):
     is_lambda: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass
 class SConditional(SExp):
     test: SExp
     then_expr: SExp

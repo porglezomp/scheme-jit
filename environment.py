@@ -1,7 +1,101 @@
 from __future__ import annotations
 from typing import Optional, Dict
 
-from scheme import SSym, SExp, SNum, SPair, Nil
+from scheme import SSym, SExp, SNum, SPair, Nil, SFunction, parse
+from visitor import Visitor
+
+
+class EnvAssigner(Visitor):
+    """Creates, fills, and assigns environments to expressions in the program.
+    >>> class EnvPrinter(Visitor):
+    ...     def visit_SExp(self, expr: SExp):
+    ...         print(expr)
+    ...         print(expr.environment)
+    >>> code = '(define (spam egg) egg)'
+    >>> parsed = parse(code)
+    >>> EnvAssigner(GlobalEnvironment.get()).visit(parsed)
+    >>> EnvPrinter().visit(parsed) #doctest: +ELLIPSIS
+    SFunction(name=SSym(name='spam'),... is_lambda=False)
+    {
+        egg: Nil
+    }
+    spam
+    {
+        egg: Nil
+    }
+    egg
+    {
+        egg: Nil
+    }
+    egg
+    {
+        egg: Nil
+    }
+
+    >>> code = '(define (spam egg) ((lambda (sausage) sausage) 42))'
+    >>> parsed = parse(code)
+    >>> EnvAssigner(GlobalEnvironment.get()).visit(parsed)
+    >>> EnvPrinter().visit(parsed) #doctest: +ELLIPSIS
+    SFunction(name=SSym(name='spam'),... is_lambda=False)
+    {
+        egg: Nil
+    }
+    spam
+    {
+        egg: Nil
+    }
+    egg
+    {
+        egg: Nil
+    }
+    (SFunction(name=SSym(name='lambda0'),...) 42)
+    {
+        egg: Nil
+    }
+    SFunction(name=SSym(name='lambda0'),... is_lambda=True)
+    {
+        sausage: Nil
+    }
+    sausage
+    {
+        sausage: Nil
+    }
+    sausage
+    {
+        sausage: Nil
+    }
+    (42)
+    {
+        egg: Nil
+    }
+    42
+    {
+        egg: Nil
+    }
+
+    """
+
+    def __init__(self, parent_env: Environment):
+        self._parent_env: Environment = parent_env
+
+    def visit_SExp(self, expr: SExp):
+        expr.environment = self._parent_env
+
+    def visit_SFunction(self, func: SFunction):
+        func_env = self._parent_env.extend()
+
+        for param in func.formals:
+            assert (
+                isinstance(param, SSym)
+            ), f'Formals must be symbols, not {type(param)}'
+            func_env[param] = Nil
+
+        func.environment = func_env
+
+        current_parent_env = self._parent_env
+        self._parent_env = func_env
+        super().visit_SFunction(func)
+        self._parent_env = current_parent_env
 
 
 class GlobalEnvironment:
@@ -93,3 +187,12 @@ class Environment:
 
     def extend(self):
         return Environment(self)
+
+    def __str__(self):
+        if len(self._frame) == 0:
+            return '{}'
+
+        body = '\n'.join(
+            (f'    {key}: {value}' for key, value in self._frame.items())
+        )
+        return f"{{\n{body}\n}}"
