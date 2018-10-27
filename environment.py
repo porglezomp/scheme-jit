@@ -75,13 +75,13 @@ class EnvAssigner(Visitor):
 
     """
 
-    def __init__(self, parent_env: Environment):
+    def __init__(self, parent_env: Environment) -> None:
         self._parent_env: Environment = parent_env
 
-    def visit_SExp(self, expr: SExp):
+    def visit_SExp(self, expr: SExp) -> None:
         expr.environment = self._parent_env
 
-    def visit_SFunction(self, func: SFunction):
+    def visit_SFunction(self, func: SFunction) -> None:
         func_env = self._parent_env.extend()
 
         for param in func.formals:
@@ -163,7 +163,7 @@ class Environment:
     >>> subenv1[SSym('y')], subenv2[SSym('y')], subenv3[SSym('y')]
     (SNum(value=5), SNum(value=6), SNum(value=9))
     """
-    def __init__(self, parent: Optional[Environment]):
+    def __init__(self, parent: Optional[Environment]) -> None:
         self._parent = parent
         self._frame: Dict[SSym, SExp] = {}
 
@@ -176,10 +176,10 @@ class Environment:
 
         return self._parent[name]
 
-    def __setitem__(self, name: SSym, value: SExp):
+    def __setitem__(self, name: SSym, value: SExp) -> None:
         self._frame[name] = value
 
-    def __contains__(self, name: SSym):
+    def __contains__(self, name: SSym) -> bool:
         if name in self._frame:
             return True
 
@@ -188,7 +188,7 @@ class Environment:
     def extend(self) -> Environment:
         return Environment(self)
 
-    def __str__(self):
+    def __str__(self) -> str:
         if len(self._frame) == 0:
             return '{}'
 
