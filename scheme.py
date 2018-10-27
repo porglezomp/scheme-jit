@@ -115,7 +115,7 @@ class SPair(SExp):
 
 
 class PairIterator:
-    def __init__(self, pair: SPair) -> None:
+    def __init__(self, pair: SPair):
         self._expr: SExp = pair
 
     def __next__(self) -> SExp:

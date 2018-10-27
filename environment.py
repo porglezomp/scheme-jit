@@ -75,7 +75,7 @@ class EnvAssigner(Visitor):
 
     """
 
-    def __init__(self, parent_env: Environment) -> None:
+    def __init__(self, parent_env: Environment):
         self._parent_env: Environment = parent_env
 
     def visit_SExp(self, expr: SExp) -> None:
@@ -163,7 +163,7 @@ class Environment:
     >>> subenv1[SSym('y')], subenv2[SSym('y')], subenv3[SSym('y')]
     (SNum(value=5), SNum(value=6), SNum(value=9))
     """
-    def __init__(self, parent: Optional[Environment]) -> None:
+    def __init__(self, parent: Optional[Environment]):
         self._parent = parent
         self._frame: Dict[SSym, SExp] = {}
 
