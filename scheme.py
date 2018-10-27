@@ -1,14 +1,31 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Iterable
+from typing import (
+    List, Optional, Tuple, Iterable, Sequence, Union, cast, TYPE_CHECKING)
+
+if TYPE_CHECKING:
+    from environment import Environment
 
 
-@dataclass
 class SExp:
     """An s-expression base class"""
-    pass
+    def __init__(self):
+        self._environment: Optional[Environment] = None
+
+    @property
+    def environment(self) -> Environment:
+        if self._environment is None:
+            raise Exception('Environment not set')
+
+        return self._environment
+
+    @environment.setter
+    def environment(self, env: Environment):
+        self._environment = env
 
 
-@dataclass(frozen=True, order=True)
+@dataclass(order=True)
 class SNum(SExp):
     """A lisp number"""
     value: int
@@ -16,8 +33,11 @@ class SNum(SExp):
     def __str__(self):
         return str(self.value)
 
+    def __hash__(self):
+        return hash(self.value)
 
-@dataclass(frozen=True)
+
+@dataclass
 class SSym(SExp):
     """A lisp symbol"""
     name: str
@@ -25,36 +45,141 @@ class SSym(SExp):
     def __str__(self):
         return self.name
 
+    def __hash__(self):
+        return hash(self.name)
+
 
 @dataclass
 class SVect(SExp):
-    """An n element vector"""
+    """An n element vector
+
+    >>> vect = SVect([
+    ...     SNum(42), SSym('spam'),
+    ...     SVect([SNum(43), SNum(44)])
+    ... ])
+    >>> str(vect)
+    '[42 spam [43 44]]'
+    >>>
+    >>> str(SVect([]))
+    '[]'
+    """
     items: List[SExp]
 
-    def to_list_items(self) -> Optional[List[SExp]]:
-        if len(self.items) == 0:
-            return []
-        if len(self.items) != 2:
-            return None
-        rest_items = self.items[1].to_list_items()
-        if rest_items is None:
-            return None
-        return [self.items[0]] + rest_items
-
     def __str__(self) -> str:
-        items = self.to_list_items()
-        if items is not None:
-            if len(items) == 2 and items[0] == SSym('quote'):
-                return f"'{items[1]}"
-            return f"({' '.join(str(i) for i in items)})"
         return f"[{' '.join(str(i) for i in self.items)}]"
 
 
-def to_slist(x: Iterable[SExp]) -> SExp:
-    acc = SVect([])
+@dataclass
+class SPair(SExp):
+    """A scheme pair.
+
+    >>> single_pair = SPair(SNum(42), SSym('spam'))
+    >>> str(single_pair)
+    '(42 . spam)'
+    >>> list(single_pair)
+    [SNum(value=42), SSym(name='spam')]
+
+    >>> nested_pair = SPair(SNum(42), SPair(SSym('egg'), SSym('spam')))
+    >>> str(nested_pair)
+    '(42 . (egg . spam))'
+    >>> list(nested_pair)
+    [SNum(value=42), SSym(name='egg'), SSym(name='spam')]
+
+    >>> s_list = SPair(SNum(42), SPair(SSym('egg'), Nil))
+    >>> str(s_list)
+    '(42 egg)'
+    >>> list(s_list)
+    [SNum(value=42), SSym(name='egg')]
+    """
+    first: SExp
+    second: SExp
+
+    def is_list(self):
+        if self.second is Nil:
+            return True
+
+        if not isinstance(self.second, SPair):
+            return False
+
+        return self.second.is_list()
+
+    def __iter__(self):
+        return PairIter(self)
+
+    def __str__(self) -> str:
+        if self.is_list():
+            return f"({' '.join((str(item) for item in self))})"
+
+        return f"({str(self.first)} . {str(self.second)})"
+
+
+class PairIter:
+    def __init__(self, pair: SPair):
+        self._expr: SExp = pair
+
+    def __next__(self):
+        if self._expr is Nil:
+            raise StopIteration
+
+        if not isinstance(self._expr, SPair):
+            val = self._expr
+            self._expr = Nil
+            return val
+
+        val = self._expr.first
+        self._expr = self._expr.second
+
+        return val
+
+    def __iter__(self):
+        return self
+
+
+class NilType(SExp):
+    def __iter__(self):
+        return self.NilIterator()
+
+    class NilIterator:
+        def __next__(self):
+            raise StopIteration
+
+        def __iter__(self):
+            return self
+
+    def __str__(self):
+        return 'Nil'
+
+    def __repr__(self):
+        return str(self)
+
+
+Nil = NilType()
+
+SList = Union[SPair, NilType]
+
+
+def to_slist(x: Sequence[SExp]) -> SList:
+    acc: SList = Nil
     for item in reversed(x):
-        acc = SVect([item, acc])
+        acc = SPair(item, acc)
+
     return acc
+
+
+@dataclass
+class SFunction(SExp):
+    name: SSym
+    formals: SList
+    body: SList
+
+    is_lambda: bool = False
+
+
+@dataclass
+class SConditional(SExp):
+    test: SExp
+    then_expr: SExp
+    else_expr: SExp
 
 
 def parse(x: str) -> List[SExp]:
@@ -68,9 +193,11 @@ def parse(x: str) -> List[SExp]:
         .split()
     )
 
+    lambda_names = lambda_name_generator()
+
     def parse(tokens: List[str]) -> Tuple[SExp, List[str]]:
         if not tokens:
-            raise "Parse Error"
+            raise Exception("Parse Error")
         elif tokens[0] == "'":
             item, tokens = parse(tokens[1:])
             return to_slist([SSym("quote"), item]), tokens
@@ -87,6 +214,48 @@ def parse(x: str) -> List[SExp]:
             while tokens[0] != ')':
                 item, tokens = parse(tokens)
                 items.append(item)
+
+            if len(items) == 0:
+                return to_slist(items), tokens[1:]
+
+            if items[0] == SSym('if'):
+                assert len(items) == 4, 'Missing parts of conditional'
+                return SConditional(
+                    items[1],
+                    items[2],
+                    items[3]
+                ), tokens[1:]
+
+            if items[0] == SSym('define'):
+                assert len(items) >= 3, 'Missing parts of function def'
+                assert isinstance(items[1], SPair), 'Expected formals list'
+
+                assert items[1] is not Nil, 'Missing function name'
+                func_name = items[1].first
+                assert isinstance(func_name, SSym)
+
+                formals = items[1].second
+                assert isinstance(formals, SPair) or formals is Nil
+                return SFunction(
+                    func_name,
+                    cast(SList, formals),
+                    to_slist(items[2:])
+                ), tokens[1:]
+
+            if items[0] == SSym('lambda'):
+                assert len(items) >= 3, 'Missing parts of lambda def'
+                formals = items[1]
+                assert (
+                    isinstance(formals, SPair) or formals is Nil
+                ), 'Expected formals list'
+
+                return SFunction(
+                    SSym(next(lambda_names)),
+                    cast(SList, formals),
+                    to_slist(items[2:]),
+                    is_lambda=True
+                ), tokens[1:]
+
             return to_slist(items), tokens[1:]
         elif tokens[0].isdigit():
             return SNum(int(tokens[0])), tokens[1:]
@@ -98,3 +267,10 @@ def parse(x: str) -> List[SExp]:
         result, tokens = parse(tokens)
         results.append(result)
     return results
+
+
+def lambda_name_generator():
+    n = 0
+    while True:
+        yield f'lambda{n}'
+        n += 1
