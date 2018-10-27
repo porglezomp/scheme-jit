@@ -127,7 +127,7 @@ class Environment:
     >>> env[SSym('bad_key')]
     Traceback (most recent call last):
         ...
-    Exception: unknown identifier bad_key
+    environment.EnvBindingNotFound: unknown identifier bad_key
     >>> env[SSym('lst')] = SPair(SNum(4), Nil)
     >>> subenv1 = env.extend()
     >>> subenv1[SSym('x')]
@@ -167,16 +167,16 @@ class Environment:
         self._parent = parent
         self._frame: Dict[SSym, SExp] = {}
 
-    def __getitem__(self, name: SSym):
+    def __getitem__(self, name: SSym) -> SExp:
         if name in self._frame:
             return self._frame[name]
 
         if self._parent is None:
-            raise Exception(f'unknown identifier {name}')
+            raise EnvBindingNotFound(f'unknown identifier {name}')
 
         return self._parent[name]
 
-    def __setitem__(self, name, value):
+    def __setitem__(self, name: SSym, value: SExp):
         self._frame[name] = value
 
     def __contains__(self, name: SSym):
@@ -185,7 +185,7 @@ class Environment:
 
         return self._parent is not None and name in self._parent
 
-    def extend(self):
+    def extend(self) -> Environment:
         return Environment(self)
 
     def __str__(self):
@@ -196,3 +196,11 @@ class Environment:
             (f'    {key}: {value}' for key, value in self._frame.items())
         )
         return f"{{\n{body}\n}}"
+
+
+class EnvBindingNotFound(Exception):
+    """
+    An exception that indicates that a requested symbol does not
+    exist in an Environment.
+    """
+    pass
