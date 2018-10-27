@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import (
-    List, Optional, Tuple, Iterable, Sequence, Union, cast, TYPE_CHECKING)
+    List, Optional, Tuple, Iterable, Iterator,
+    Sequence, Union, cast, TYPE_CHECKING)
 
 if TYPE_CHECKING:
     from environment import Environment
@@ -10,7 +11,7 @@ if TYPE_CHECKING:
 
 class SExp:
     """An s-expression base class"""
-    def __init__(self):
+    def __init__(self) -> None:
         self._environment: Optional[Environment] = None
 
     @property
@@ -21,7 +22,7 @@ class SExp:
         return self._environment
 
     @environment.setter
-    def environment(self, env: Environment):
+    def environment(self, env: Environment) -> None:
         self._environment = env
 
 
@@ -30,10 +31,10 @@ class SNum(SExp):
     """A lisp number"""
     value: int
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.value)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.value)
 
 
@@ -42,10 +43,10 @@ class SSym(SExp):
     """A lisp symbol"""
     name: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.name)
 
 
@@ -94,7 +95,7 @@ class SPair(SExp):
     first: SExp
     second: SExp
 
-    def is_list(self):
+    def is_list(self) -> bool:
         if self.second is Nil:
             return True
 
@@ -103,8 +104,8 @@ class SPair(SExp):
 
         return self.second.is_list()
 
-    def __iter__(self):
-        return PairIter(self)
+    def __iter__(self) -> PairIterator:
+        return PairIterator(self)
 
     def __str__(self) -> str:
         if self.is_list():
@@ -113,11 +114,11 @@ class SPair(SExp):
         return f"({str(self.first)} . {str(self.second)})"
 
 
-class PairIter:
+class PairIterator:
     def __init__(self, pair: SPair):
         self._expr: SExp = pair
 
-    def __next__(self):
+    def __next__(self) -> SExp:
         if self._expr is Nil:
             raise StopIteration
 
@@ -131,26 +132,23 @@ class PairIter:
 
         return val
 
-    def __iter__(self):
+    def __iter__(self) -> PairIterator:
         return self
 
 
 class NilType(SExp):
-    def __iter__(self):
+    def __iter__(self) -> NilIterator:
         return self.NilIterator()
 
     class NilIterator:
-        def __next__(self):
+        def __next__(self) -> SExp:
             raise StopIteration
 
-        def __iter__(self):
+        def __iter__(self) -> NilType.NilIterator:
             return self
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'Nil'
-
-    def __repr__(self):
-        return str(self)
 
 
 Nil = NilType()
@@ -269,7 +267,7 @@ def parse(x: str) -> List[SExp]:
     return results
 
 
-def lambda_name_generator():
+def lambda_name_generator() -> Iterator[str]:
     n = 0
     while True:
         yield f'lambda{n}'
