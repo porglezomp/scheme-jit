@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, Generator, List, Optional
+from typing import Counter, Dict, Generator, List, Optional
 
 import scheme
 from environment import Environment
@@ -59,7 +59,7 @@ class SymLit(Value):
 class EvalEnv:
     _local_env: Dict[Var, SExp]
     _global_env: Environment
-    stats: Dict[type, int]
+    stats: Counter[type]
 
     def __init__(self,
                  local_env: Optional[Dict[Var, SExp]] = None,
@@ -72,7 +72,7 @@ class EvalEnv:
             self._global_env = Environment(None)
         else:
             self._global_env = global_env
-        self.stats = {}
+        self.stats = Counter()
 
     def copy(self) -> EvalEnv:
         """Return a shallow copy of the environment."""
@@ -141,6 +141,7 @@ class BinopInst(Inst):
     rhs: Value
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         lhs = env[self.lhs]
         rhs = env[self.rhs]
         if self.op == Binop.SYM_EQ:
@@ -177,6 +178,7 @@ class TypeofInst(Inst):
     value: Value
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         value = env[self.value]
         if isinstance(value, SNum):
             env[self.dest] = SSym('number')
@@ -194,6 +196,7 @@ class CopyInst(Inst):
     value: Value
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         env[self.dest] = env[self.value]
 
 
@@ -203,6 +206,7 @@ class LookupInst(Inst):
     name: Value
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         sym = env[self.name]
         assert isinstance(sym, SSym)
         env[self.dest] = env._global_env[sym]
@@ -214,6 +218,7 @@ class AllocInst(Inst):
     size: Value
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         size = env[self.size]
         assert isinstance(size, SNum)
         env[self.dest] = SVect([scheme.Nil] * size.value)
@@ -226,6 +231,7 @@ class LoadInst(Inst):
     offset: Value
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         vect = env[self.addr]
         index = env[self.offset]
         assert isinstance(vect, SVect) and isinstance(index, SNum)
@@ -240,6 +246,7 @@ class StoreInst(Inst):
     value: Value
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         vect = env[self.addr]
         index = env[self.offset]
         assert isinstance(vect, SVect) and isinstance(index, SNum)
@@ -253,6 +260,7 @@ class LengthInst(Inst):
     addr: Value
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         vect = env[self.addr]
         assert isinstance(vect, SVect)
         env[self.dest] = SNum(len(vect.items))
@@ -265,6 +273,7 @@ class CallInst(Inst):
     args: List[Value]
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         for _ in self.run_call(env):
             pass
 
@@ -290,6 +299,7 @@ class Jmp(TerminatorInst):
         return f"Jmp(target={self.target.name})"
 
     def run(self, env: EvalEnv) -> BB:
+        env.stats[type(self)] += 1
         return self.target
 
 
@@ -305,6 +315,7 @@ class Br(TerminatorInst):
                 "else_target={self.else_target.name})")
 
     def run(self, env: EvalEnv) -> BB:
+        env.stats[type(self)] += 1
         res = env[self.cond]
         if res == SSym('true'):
             return self.then_target
@@ -324,6 +335,7 @@ class BasicBlock(BB):
         self.instructions.append(inst)
 
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, BB]:
+        env.stats[type(self)] += 1
         for inst in self.instructions:
             if isinstance(inst, CallInst):
                 yield from inst.run_call(env)
