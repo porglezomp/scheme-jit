@@ -1,8 +1,6 @@
 from typing import List, Union
 
-from scheme import (
-    SExp, SNum, SSym, SVect, SPair, SConditional, SFunction, Nil
-)
+from scheme import Nil, SConditional, SExp, SFunction, SNum, SPair, SSym, SVect
 
 
 class Visitor:

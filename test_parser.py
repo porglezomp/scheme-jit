@@ -1,7 +1,7 @@
 import unittest
 
 import scheme
-from scheme import SSym, SVect, SNum, SPair, Nil, SConditional, SFunction
+from scheme import Nil, SConditional, SFunction, SNum, SPair, SSym, SVect
 
 
 class ParserTestCase(unittest.TestCase):
