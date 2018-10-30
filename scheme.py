@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import (
-    List, Optional, Tuple, Iterable, Iterator,
-    Sequence, Union, cast, TYPE_CHECKING)
+from typing import (TYPE_CHECKING, Iterator, List, Optional, Sequence, Tuple,
+                    Union, cast)
+
+import bytecode
 
 if TYPE_CHECKING:
     from environment import Environment
@@ -164,12 +165,26 @@ def to_slist(x: Sequence[SExp]) -> SList:
     return acc
 
 
+def make_bool(x: bool) -> SSym:
+    """
+    Returns a scheme boolean.
+
+    >>> make_bool(True)
+    SSym(name='true')
+    >>> make_bool(False)
+    SSym(name='false')
+    """
+    if x:
+        return SSym('true')
+    return SSym('false')
+
+
 @dataclass
 class SFunction(SExp):
     name: SSym
     formals: SList
     body: SList
-
+    code: Optional[bytecode.Function] = None
     is_lambda: bool = False
 
 

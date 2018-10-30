@@ -3,10 +3,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, List, Optional
+from typing import Dict, Generator, List, Optional
 
+import scheme
 from environment import Environment
-from scheme import SExp, SNum, SSym
+from scheme import SExp, SNum, SSym, SVect
 
 
 class Value(ABC):
@@ -16,11 +17,15 @@ class Value(ABC):
 
 
 class Inst(ABC):
-    pass
+    @abstractmethod
+    def run(self, env: EvalEnv) -> None:
+        ...
 
 
-class TerminatorInst(Inst, ABC):
-    pass
+class TerminatorInst(ABC):
+    @abstractmethod
+    def run(self, env: EvalEnv) -> BB:
+        ...
 
 
 class BB(ABC):
@@ -112,6 +117,9 @@ class EvalEnv:
             return key in self._local_env
         return True
 
+    def __repr__(self) -> str:
+        return f"EvalEnv({self._local_env})"
+
 
 class Binop(Enum):
     ADD = auto()
@@ -127,10 +135,40 @@ class Binop(Enum):
 
 @dataclass
 class BinopInst(Inst):
-    op: Binop
     dest: Var
+    op: Binop
     lhs: Value
     rhs: Value
+
+    def run(self, env: EvalEnv) -> None:
+        lhs = env[self.lhs]
+        rhs = env[self.rhs]
+        if self.op == Binop.SYM_EQ:
+            assert isinstance(lhs, SSym) and isinstance(rhs, SSym)
+            env[self.dest] = scheme.make_bool(lhs == rhs)
+        elif self.op == Binop.PTR_EQ:
+            assert isinstance(lhs, SVect) and isinstance(rhs, SVect)
+            env[self.dest] = scheme.make_bool(lhs is rhs)
+        else:
+            assert isinstance(lhs, SNum) and isinstance(rhs, SNum)
+            if self.op == Binop.ADD:
+                env[self.dest] = SNum(lhs.value + rhs.value)
+            elif self.op == Binop.SUB:
+                env[self.dest] = SNum(lhs.value - rhs.value)
+            elif self.op == Binop.MUL:
+                env[self.dest] = SNum(lhs.value * rhs.value)
+            elif self.op == Binop.DIV:
+                assert rhs.value != 0
+                env[self.dest] = SNum(lhs.value // rhs.value)
+            elif self.op == Binop.MOD:
+                assert rhs.value != 0
+                env[self.dest] = SNum(lhs.value % rhs.value)
+            elif self.op == Binop.NUM_EQ:
+                env[self.dest] = scheme.make_bool(lhs == rhs)
+            elif self.op == Binop.NUM_LT:
+                env[self.dest] = scheme.make_bool(lhs < rhs)
+            else:
+                raise ValueError(f"Unexpected op {self.op}")
 
 
 @dataclass
@@ -138,11 +176,25 @@ class TypeofInst(Inst):
     dest: Var
     value: Value
 
+    def run(self, env: EvalEnv) -> None:
+        value = env[self.value]
+        if isinstance(value, SNum):
+            env[self.dest] = SSym('number')
+        elif isinstance(value, SSym):
+            env[self.dest] = SSym('symbol')
+        elif isinstance(value, SVect):
+            env[self.dest] = SSym('vector')
+        else:
+            raise ValueError(f"Value {value} wasn't an expected type.")
+
 
 @dataclass
 class CopyInst(Inst):
     dest: Var
     value: Value
+
+    def run(self, env: EvalEnv) -> None:
+        env[self.dest] = env[self.value]
 
 
 @dataclass
@@ -150,23 +202,60 @@ class LookupInst(Inst):
     dest: Var
     name: Value
 
+    def run(self, env: EvalEnv) -> None:
+        sym = env[self.name]
+        assert isinstance(sym, SSym)
+        env[self.dest] = env._global_env[sym]
+
 
 @dataclass
 class AllocInst(Inst):
     dest: Var
     size: Value
 
+    def run(self, env: EvalEnv) -> None:
+        size = env[self.size]
+        assert isinstance(size, SNum)
+        env[self.dest] = SVect([scheme.Nil] * size.value)
+
 
 @dataclass
 class LoadInst(Inst):
     dest: Var
     addr: Value
+    offset: Value
+
+    def run(self, env: EvalEnv) -> None:
+        vect = env[self.addr]
+        index = env[self.offset]
+        assert isinstance(vect, SVect) and isinstance(index, SNum)
+        assert index.value < len(vect.items)
+        env[self.dest] = vect.items[index.value]
 
 
 @dataclass
 class StoreInst(Inst):
     addr: Value
+    offset: Value
     value: Value
+
+    def run(self, env: EvalEnv) -> None:
+        vect = env[self.addr]
+        index = env[self.offset]
+        assert isinstance(vect, SVect) and isinstance(index, SNum)
+        assert index.value < len(vect.items)
+        vect.items[index.value] = env[self.value]
+
+
+@dataclass
+class LengthInst(Inst):
+    dest: Var
+    addr: Value
+
+    def run(self, env: EvalEnv) -> None:
+        vect = env[self.addr]
+        assert isinstance(vect, SVect)
+        env[self.dest] = SNum(len(vect.items))
 
 
 @dataclass
@@ -175,6 +264,23 @@ class CallInst(Inst):
     name: Value
     args: List[Value]
 
+    def run(self, env: EvalEnv) -> None:
+        for _ in self.run_call(env):
+            pass
+
+    def run_call(self, env: EvalEnv) -> Generator[EvalEnv, None, None]:
+        func = env[self.name]
+        assert isinstance(func, scheme.SFunction)
+        if func.code is None:
+            raise NotImplementedError("JIT compiling functions!")
+        func_code = func.code
+        func_env = env.copy()
+        assert len(func_code.params)
+        func_env._local_env = {
+            name: env[arg] for name, arg in zip(func_code.params, self.args)
+        }
+        env[self.dest] = yield from func_code.run(func_env)
+
 
 @dataclass
 class Jmp(TerminatorInst):
@@ -182,6 +288,9 @@ class Jmp(TerminatorInst):
 
     def __repr__(self) -> str:
         return f"Jmp(target={self.target.name})"
+
+    def run(self, env: EvalEnv) -> BB:
+        return self.target
 
 
 @dataclass
@@ -195,6 +304,15 @@ class Br(TerminatorInst):
                 "then_target={self.then_target.name}, "
                 "else_target={self.else_target.name})")
 
+    def run(self, env: EvalEnv) -> BB:
+        res = env[self.cond]
+        if res == SSym('true'):
+            return self.then_target
+        elif res == SSym('false'):
+            return self.else_target
+        else:
+            raise ValueError(f"Invalid boolean {res} in Br")
+
 
 @dataclass
 class BasicBlock(BB):
@@ -205,11 +323,20 @@ class BasicBlock(BB):
     def add_inst(self, inst: Inst) -> None:
         self.instructions.append(inst)
 
+    def run(self, env: EvalEnv) -> Generator[EvalEnv, None, BB]:
+        for inst in self.instructions:
+            if isinstance(inst, CallInst):
+                yield from inst.run_call(env)
+            inst.run(env)
+            yield env.copy()
+        assert self.terminator
+        return self.terminator.run(env)
+
 
 @dataclass
 class ReturnBlock(BB):
     name: str
-    ret: Var
+    ret: Value
 
 
 @dataclass
@@ -217,3 +344,11 @@ class Function:
     params: List[Var]
     start: BasicBlock
     finish: ReturnBlock
+
+    def run(self, env: EvalEnv) -> Generator[EvalEnv, None, SExp]:
+        assert all(p in env for p in self.params)
+        block: BB = self.start
+        while isinstance(block, BasicBlock):
+            block = yield from block.run(env)
+        assert isinstance(block, ReturnBlock)
+        return env[block.ret]
