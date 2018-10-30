@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from scheme import SNum, SSym
+from environment import Environment
+from scheme import SExp, SNum, SSym
 
 
 class Value(ABC):
-    pass
+    @abstractmethod
+    def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
+        ...
 
 
 class Inst(ABC):
@@ -28,15 +31,86 @@ class BB(ABC):
 class Var(Value):
     name: str
 
+    def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
+        return env[self]
+
 
 @dataclass(frozen=True)
 class NumLit(Value):
     value: SNum
 
+    def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
+        return self.value
+
 
 @dataclass(frozen=True)
 class SymLit(Value):
     value: SSym
+
+    def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
+        return self.value
+
+
+class EvalEnv:
+    _local_env: Dict[Var, SExp]
+    _global_env: Environment
+    stats: Dict[type, int]
+
+    def __init__(self,
+                 local_env: Optional[Dict[Var, SExp]] = None,
+                 global_env: Optional[Environment] = None):
+        if local_env is None:
+            self._local_env = {}
+        else:
+            self._local_env = local_env
+        if global_env is None:
+            self._global_env = Environment(None)
+        else:
+            self._global_env = global_env
+        self.stats = {}
+
+    def copy(self) -> EvalEnv:
+        """Return a shallow copy of the environment."""
+        env = EvalEnv(self._local_env.copy(), self._global_env)
+        env.stats = self.stats.copy()
+        return env
+
+    def __getitem__(self, key: Value) -> SExp:
+        """
+        Looks up a value in the local environment.
+
+        If the value is not a variable, it returns its runtime value.
+
+        >>> env = EvalEnv()
+        >>> env[Var("x0")] = SSym("nil?")
+        >>> env[Var("x0")]
+        SSym(name='nil?')
+        >>> env[NumLit(SNum(42))]
+        SNum(value=42)
+        """
+        return key.lookup_self(self._local_env)
+
+    def __setitem__(self, key: Var, value: SExp) -> None:
+        self._local_env[key] = value
+
+    def __contains__(self, key: Value) -> bool:
+        """
+        Returns whether the given key is in the local environment.
+
+        Values that aren't variables are always available in the environment.
+
+        >>> env = EvalEnv()
+        >>> env[Var("x0")] = SSym("nil?")
+        >>> Var("x0") in env
+        True
+        >>> Var("nil?") in env
+        False
+        >>> SymLit(SSym("nil?")) in env
+        True
+        """
+        if isinstance(key, Var):
+            return key in self._local_env
+        return True
 
 
 class Binop(Enum):
