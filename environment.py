@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Optional, Dict
 
-from scheme import SSym, SExp, SNum, SPair, Nil, SFunction, parse
+from typing import Dict, Optional
+
+from scheme import Nil, SExp, SFunction, SNum, SPair, SSym, parse
 from visitor import Visitor
 
 
