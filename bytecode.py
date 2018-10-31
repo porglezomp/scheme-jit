@@ -7,12 +7,12 @@ from typing import Counter, Dict, Generator, List, Optional
 
 import scheme
 from environment import Environment
-from scheme import SExp, SNum, SSym, SVect
+from scheme import SNum, SSym, SVect, Value
 
 
 class Parameter(ABC):
     @abstractmethod
-    def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
+    def lookup_self(self, env: Dict[Var, Value]) -> Value:
         ...
 
 
@@ -36,7 +36,7 @@ class BB(ABC):
 class Var(Parameter):
     name: str
 
-    def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
+    def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return env[self]
 
 
@@ -44,7 +44,7 @@ class Var(Parameter):
 class NumLit(Parameter):
     value: SNum
 
-    def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
+    def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return self.value
 
 
@@ -52,17 +52,17 @@ class NumLit(Parameter):
 class SymLit(Parameter):
     value: SSym
 
-    def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
+    def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return self.value
 
 
 class EvalEnv:
-    _local_env: Dict[Var, SExp]
+    _local_env: Dict[Var, Value]
     _global_env: Environment
     stats: Counter[type]
 
     def __init__(self,
-                 local_env: Optional[Dict[Var, SExp]] = None,
+                 local_env: Optional[Dict[Var, Value]] = None,
                  global_env: Optional[Environment] = None):
         if local_env is None:
             self._local_env = {}
@@ -80,7 +80,7 @@ class EvalEnv:
         env.stats = self.stats.copy()
         return env
 
-    def __getitem__(self, key: Parameter) -> SExp:
+    def __getitem__(self, key: Parameter) -> Value:
         """
         Looks up a value in the local environment.
 
@@ -95,7 +95,7 @@ class EvalEnv:
         """
         return key.lookup_self(self._local_env)
 
-    def __setitem__(self, key: Var, value: SExp) -> None:
+    def __setitem__(self, key: Var, value: Value) -> None:
         self._local_env[key] = value
 
     def __contains__(self, key: Parameter) -> bool:
@@ -209,7 +209,9 @@ class LookupInst(Inst):
         env.stats[type(self)] += 1
         sym = env[self.name]
         assert isinstance(sym, SSym)
-        env[self.dest] = env._global_env[sym]
+        value = env._global_env[sym]
+        assert isinstance(value, Value)
+        env[self.dest] = value
 
 
 @dataclass
@@ -236,7 +238,9 @@ class LoadInst(Inst):
         index = env[self.offset]
         assert isinstance(vect, SVect) and isinstance(index, SNum)
         assert index.value < len(vect.items)
-        env[self.dest] = vect.items[index.value]
+        value = vect.items[index.value]
+        assert isinstance(value, Value)
+        env[self.dest] = value
 
 
 @dataclass
@@ -357,7 +361,7 @@ class Function:
     start: BasicBlock
     finish: ReturnBlock
 
-    def run(self, env: EvalEnv) -> Generator[EvalEnv, None, SExp]:
+    def run(self, env: EvalEnv) -> Generator[EvalEnv, None, Value]:
         assert all(p in env for p in self.params)
         block: BB = self.start
         while isinstance(block, BasicBlock):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC
 from dataclasses import dataclass
 from typing import (TYPE_CHECKING, Iterator, List, Optional, Sequence, Tuple,
                     Union, cast)
@@ -27,8 +28,13 @@ class SExp:
         self._environment = env
 
 
+class Value(SExp):
+    """An s-expression that's a valid run-time object."""
+    ...
+
+
 @dataclass(order=True)
-class SNum(SExp):
+class SNum(Value):
     """A lisp number"""
     value: int
 
@@ -40,7 +46,7 @@ class SNum(SExp):
 
 
 @dataclass
-class SSym(SExp):
+class SSym(Value):
     """A lisp symbol"""
     name: str
 
@@ -52,7 +58,7 @@ class SSym(SExp):
 
 
 @dataclass
-class SVect(SExp):
+class SVect(Value):
     """An n element vector
 
     >>> vect = SVect([
