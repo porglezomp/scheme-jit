@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from abc import ABC
 from dataclasses import dataclass
-from typing import (
-    List, Optional, Tuple, Iterable, Iterator,
-    Sequence, Union, cast, TYPE_CHECKING)
+from typing import (TYPE_CHECKING, Iterator, List, Optional, Sequence, Tuple,
+                    Union, cast)
+
+import bytecode
 
 if TYPE_CHECKING:
     from environment import Environment
@@ -26,8 +28,13 @@ class SExp:
         self._environment = env
 
 
+class Value(SExp):
+    """An s-expression that's a valid run-time object."""
+    ...
+
+
 @dataclass(order=True)
-class SNum(SExp):
+class SNum(Value):
     """A lisp number"""
     value: int
 
@@ -39,7 +46,7 @@ class SNum(SExp):
 
 
 @dataclass
-class SSym(SExp):
+class SSym(Value):
     """A lisp symbol"""
     name: str
 
@@ -51,7 +58,7 @@ class SSym(SExp):
 
 
 @dataclass
-class SVect(SExp):
+class SVect(Value):
     """An n element vector
 
     >>> vect = SVect([
@@ -164,12 +171,26 @@ def to_slist(x: Sequence[SExp]) -> SList:
     return acc
 
 
+def make_bool(x: bool) -> SSym:
+    """
+    Returns a scheme boolean.
+
+    >>> make_bool(True)
+    SSym(name='true')
+    >>> make_bool(False)
+    SSym(name='false')
+    """
+    if x:
+        return SSym('true')
+    return SSym('false')
+
+
 @dataclass
 class SFunction(SExp):
     name: SSym
     formals: SList
     body: SList
-
+    code: Optional[bytecode.Function] = None
     is_lambda: bool = False
 
 
