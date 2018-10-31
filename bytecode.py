@@ -10,7 +10,7 @@ from environment import Environment
 from scheme import SExp, SNum, SSym, SVect
 
 
-class Value(ABC):
+class Parameter(ABC):
     @abstractmethod
     def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
         ...
@@ -33,7 +33,7 @@ class BB(ABC):
 
 
 @dataclass(frozen=True)
-class Var(Value):
+class Var(Parameter):
     name: str
 
     def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
@@ -41,7 +41,7 @@ class Var(Value):
 
 
 @dataclass(frozen=True)
-class NumLit(Value):
+class NumLit(Parameter):
     value: SNum
 
     def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
@@ -49,7 +49,7 @@ class NumLit(Value):
 
 
 @dataclass(frozen=True)
-class SymLit(Value):
+class SymLit(Parameter):
     value: SSym
 
     def lookup_self(self, env: Dict[Var, SExp]) -> SExp:
@@ -80,7 +80,7 @@ class EvalEnv:
         env.stats = self.stats.copy()
         return env
 
-    def __getitem__(self, key: Value) -> SExp:
+    def __getitem__(self, key: Parameter) -> SExp:
         """
         Looks up a value in the local environment.
 
@@ -98,7 +98,7 @@ class EvalEnv:
     def __setitem__(self, key: Var, value: SExp) -> None:
         self._local_env[key] = value
 
-    def __contains__(self, key: Value) -> bool:
+    def __contains__(self, key: Parameter) -> bool:
         """
         Returns whether the given key is in the local environment.
 
@@ -137,8 +137,8 @@ class Binop(Enum):
 class BinopInst(Inst):
     dest: Var
     op: Binop
-    lhs: Value
-    rhs: Value
+    lhs: Parameter
+    rhs: Parameter
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -175,7 +175,7 @@ class BinopInst(Inst):
 @dataclass
 class TypeofInst(Inst):
     dest: Var
-    value: Value
+    value: Parameter
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -187,13 +187,13 @@ class TypeofInst(Inst):
         elif isinstance(value, SVect):
             env[self.dest] = SSym('vector')
         else:
-            raise ValueError(f"Value {value} wasn't an expected type.")
+            raise ValueError(f"Parameter {value} wasn't an expected type.")
 
 
 @dataclass
 class CopyInst(Inst):
     dest: Var
-    value: Value
+    value: Parameter
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -203,7 +203,7 @@ class CopyInst(Inst):
 @dataclass
 class LookupInst(Inst):
     dest: Var
-    name: Value
+    name: Parameter
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -215,7 +215,7 @@ class LookupInst(Inst):
 @dataclass
 class AllocInst(Inst):
     dest: Var
-    size: Value
+    size: Parameter
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -227,8 +227,8 @@ class AllocInst(Inst):
 @dataclass
 class LoadInst(Inst):
     dest: Var
-    addr: Value
-    offset: Value
+    addr: Parameter
+    offset: Parameter
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -241,9 +241,9 @@ class LoadInst(Inst):
 
 @dataclass
 class StoreInst(Inst):
-    addr: Value
-    offset: Value
-    value: Value
+    addr: Parameter
+    offset: Parameter
+    value: Parameter
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -257,7 +257,7 @@ class StoreInst(Inst):
 @dataclass
 class LengthInst(Inst):
     dest: Var
-    addr: Value
+    addr: Parameter
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -269,8 +269,8 @@ class LengthInst(Inst):
 @dataclass
 class CallInst(Inst):
     dest: Var
-    name: Value
-    args: List[Value]
+    name: Parameter
+    args: List[Parameter]
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
@@ -305,7 +305,7 @@ class Jmp(TerminatorInst):
 
 @dataclass
 class Br(TerminatorInst):
-    cond: Value
+    cond: Parameter
     then_target: BB
     else_target: BB
 
@@ -348,7 +348,7 @@ class BasicBlock(BB):
 @dataclass
 class ReturnBlock(BB):
     name: str
-    ret: Value
+    ret: Parameter
 
 
 @dataclass
