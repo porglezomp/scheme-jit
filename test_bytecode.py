@@ -13,60 +13,44 @@ class BytecodeTestCast(unittest.TestCase):
         bb0:
             v1 = lookup 'nil?
             v2 = call v1 (v0)
-            br v2 bb1 bb2
-
-        bb1:
-            result = 'true
-            jmp end
-
-        bb2:
+            br v2 bb1
             v3 = lookup 'pair?
             v4 = call v3 (v0)
-            br v4 bb3 bb4
-
-        bb3:
+            brn v4 bb2
             v5 = lookup 'cdr
             v6 = call v5 (v0)
             v7 = lookup 'list?
-            result = call v7 (v6)
-            jmp end
+            v8 = call v7 (v6)
+            return v8
 
-        bb4:
-            result = 'false
-            jmp end
+        bb1:
+            return 'true
 
-        end:
-            return result
+        bb2:
+            return 'false
         """
-        result = Var("result")
         bb0 = bytecode.BasicBlock("bb0")
         bb1 = bytecode.BasicBlock("bb1")
         bb2 = bytecode.BasicBlock("bb2")
-        bb3 = bytecode.BasicBlock("bb3")
-        bb4 = bytecode.BasicBlock("bb4")
-        end = bytecode.ReturnBlock("end", result)
-        is_list = bytecode.Function(params=[Var("v0")], start=bb0, finish=end)
+        is_list = bytecode.Function([Var("v0")], bb0)
 
         bb0.add_inst(bytecode.LookupInst(Var("v1"), SymLit(SSym("nil?"))))
         bb0.add_inst(bytecode.CallInst(Var("v2"), Var("v1"), [Var("v1")]))
-        bb0.terminator = bytecode.Br(Var("v2"), bb1, bb2)
+        bb0.add_inst(bytecode.BrInst(Var("v2"), bb1))
+        bb0.add_inst(bytecode.LookupInst(Var("v3"), SymLit(SSym("pair?"))))
+        bb0.add_inst(bytecode.CallInst(Var("v4"), Var("v3"), [Var("v0")]))
+        bb0.add_inst(bytecode.BrnInst(Var("v4"), bb2))
+        bb0.add_inst(bytecode.LookupInst(Var("v5"), SymLit(SSym("cdr"))))
+        bb0.add_inst(bytecode.CallInst(Var("v6"), Var("v5"), [Var("v0")]))
+        bb0.add_inst(bytecode.LookupInst(Var("v7"), SymLit(SSym("list?"))))
+        bb0.add_inst(bytecode.CallInst(Var("v8"), Var("v7"), [Var("v6")]))
+        bb0.add_inst(bytecode.ReturnInst(Var("v8")))
 
-        bb1.add_inst(bytecode.CopyInst(result, SymLit(SSym("true"))))
-        bb1.terminator = bytecode.Jmp(end)
+        bb1.add_inst(bytecode.ReturnInst(SymLit(SSym("true"))))
 
-        bb2.add_inst(bytecode.LookupInst(Var("v3"), SymLit(SSym("pair?"))))
-        bb2.add_inst(bytecode.CallInst(Var("v4"), Var("v3"), [Var("v0")]))
-        bb2.terminator = bytecode.Br(Var("v4"), bb3, bb4)
+        bb2.add_inst(bytecode.ReturnInst(SymLit(SSym("false"))))
 
-        bb3.add_inst(bytecode.LookupInst(Var("v5"), SymLit(SSym("cdr"))))
-        bb3.add_inst(bytecode.CallInst(Var("v6"), Var("v5"), [Var("v0")]))
-        bb3.add_inst(bytecode.LookupInst(Var("v7"), SymLit(SSym("list?"))))
-        bb3.add_inst(bytecode.CallInst(result, Var("v7"), [Var("v6")]))
-        bb3.terminator = bytecode.Jmp(end)
-
-        bb4.add_inst(bytecode.CopyInst(result, SymLit(SSym("false"))))
-        bb4.terminator = bytecode.Jmp(end)
-
+        # These tests are just to test the API
         assert is_list
 
     def test_example_tail_call(self) -> None:
@@ -75,57 +59,39 @@ class BytecodeTestCast(unittest.TestCase):
         bb0:
             v1 = lookup 'nil?
             v2 = call v1 (v0)
-            br v2 bb1 bb2
-
-        bb1:
-            result = 'true
-            jmp end
-
-        bb2:
+            br v2 bb1
             v3 = lookup 'pair?
             v4 = call v3 (v0)
-            br v4 bb3 bb4
-
-        bb3:
+            brn v4 bb2
             v5 = lookup 'cdr
             v0 = call v5 (v0)
             jmp bb0
 
-        bb4:
-            result = 'false
-            jmp end
+        bb1:
+            return 'true
 
-        end:
-            return result
+        bb2:
+            return 'false
         """
-        result = Var("result")
         bb0 = bytecode.BasicBlock("bb0")
         bb1 = bytecode.BasicBlock("bb1")
         bb2 = bytecode.BasicBlock("bb2")
-        bb3 = bytecode.BasicBlock("bb3")
-        bb4 = bytecode.BasicBlock("bb4")
-        end = bytecode.ReturnBlock("end", result)
-        is_list = bytecode.Function(params=[Var("v0")], start=bb0, finish=end)
+        is_list = bytecode.Function([Var("v0")], bb0)
 
         bb0.add_inst(bytecode.LookupInst(Var("v1"), SymLit(SSym("nil?"))))
         bb0.add_inst(bytecode.CallInst(Var("v2"), Var("v1"), [Var("v0")]))
-        bb0.terminator = bytecode.Br(Var("v2"), bb1, bb2)
+        bb0.add_inst(bytecode.BrInst(Var("v2"), bb1))
+        bb0.add_inst(bytecode.LookupInst(Var("v3"), SymLit(SSym("pair?"))))
+        bb0.add_inst(bytecode.CallInst(Var("v4"), Var("v3"), [Var("v0")]))
+        bb0.add_inst(bytecode.BrnInst(Var("v4"), bb2))
+        bb0.add_inst(bytecode.LookupInst(Var("v5"), SymLit(SSym("global"))))
+        bb0.add_inst(bytecode.CallInst(Var("v0"), Var("v5"), [Var("v0")]))
+        bb0.add_inst(bytecode.JmpInst(bb0))
 
-        bb1.add_inst(bytecode.CopyInst(result, SymLit(SSym("true"))))
-        bb1.terminator = bytecode.Jmp(end)
+        bb1.add_inst(bytecode.ReturnInst(SymLit(SSym("true"))))
 
-        bb2.add_inst(bytecode.LookupInst(Var("v3"), SymLit(SSym("pair?"))))
-        bb2.add_inst(bytecode.CallInst(Var("v4"), Var("v3"), [Var("v0")]))
-        bb2.terminator = bytecode.Br(Var("v4"), bb3, bb4)
+        bb2.add_inst(bytecode.ReturnInst(SymLit(SSym("false"))))
 
-        bb3.add_inst(bytecode.LookupInst(Var("v5"), SymLit(SSym("global"))))
-        bb3.add_inst(bytecode.CallInst(Var("v0"), Var("v5"), [Var("v0")]))
-        bb3.terminator = bytecode.Jmp(bb0)
-
-        bb4.add_inst(bytecode.CopyInst(result, SymLit(SSym("false"))))
-        bb4.terminator = bytecode.Jmp(end)
-
-        # These tests are just to test the API
         assert is_list
 
     def test_example_inlined(self) -> None:
@@ -134,66 +100,45 @@ class BytecodeTestCast(unittest.TestCase):
         bb0:
             v1 = typeof v0
             v2 = sym_eq v1 'vector
-            br v2 bb1 false
-
-        bb1:
+            brn v2 false
             v3 = length v0
             v4 = num_eq v3 0
-            br v4 true bb2
-
-        bb2:
+            br v4 true
             v5 = num_eq v3 2
-            br v5 bb3 false
-
-        bb3:
+            brn v5 false
             v0 = load v0 [1]
             jmp bb0
 
         true:
-            result = 'true
-            jmp end
+            return 'true
 
         false:
-            result = 'false
-            jmp end
-
-        end:
-            return result
-
+            return 'false
         """
-        result = Var("result")
         bb0 = bytecode.BasicBlock("bb0")
-        bb1 = bytecode.BasicBlock("bb1")
-        bb2 = bytecode.BasicBlock("bb2")
-        bb3 = bytecode.BasicBlock("bb3")
         true = bytecode.BasicBlock("true")
         false = bytecode.BasicBlock("false")
-        end = bytecode.ReturnBlock("end", result)
-        is_list = bytecode.Function(params=[Var("v0")], start=bb0, finish=end)
+        is_list = bytecode.Function([Var("v0")], bb0)
 
         # These tests are just to test the API
         bb0.add_inst(bytecode.TypeofInst(Var("v1"), Var("v0")))
         bb0.add_inst(bytecode.BinopInst(
             Var("v2"), Binop.SYM_EQ, Var("v1"), SymLit(SSym("vector"))))
-        bb0.terminator = bytecode.Br(Var("v2"), bb1, false)
-
-        bb1.add_inst(bytecode.LengthInst(Var("v3"), Var("v0")))
-        bb1.add_inst(bytecode.BinopInst(
+        bb0.add_inst(bytecode.BrnInst(Var("v2"), false))
+        bb0.add_inst(bytecode.LengthInst(Var("v3"), Var("v0")))
+        bb0.add_inst(bytecode.BinopInst(
             Var("v4"), Binop.NUM_EQ, Var("v3"), NumLit(SNum(0))))
-        bb1.terminator = bytecode.Br(Var("v4"), true, bb2)
+        bb0.add_inst(bytecode.BrInst(Var("v4"), true))
 
-        bb2.add_inst(bytecode.BinopInst(
+        bb0.add_inst(bytecode.BinopInst(
             Var("v5"), Binop.NUM_EQ, Var("v3"), NumLit(SNum(2))))
-        bb2.terminator = bytecode.Br(Var("v5"), bb3, false)
+        bb0.add_inst(bytecode.BrnInst(Var("v5"), false))
+        bb0.add_inst(bytecode.LoadInst(Var("v0"), Var("v0"), NumLit(SNum(1))))
+        bb0.add_inst(bytecode.JmpInst(bb0))
 
-        bb3.add_inst(bytecode.LoadInst(Var("v0"), Var("v0"), NumLit(SNum(1))))
-        bb3.terminator = bytecode.Jmp(bb0)
+        true.add_inst(bytecode.ReturnInst(SymLit(SSym('true'))))
 
-        true.add_inst(bytecode.CopyInst(result, SymLit(SSym('true'))))
-        true.terminator = bytecode.Jmp(end)
-
-        false.add_inst(bytecode.CopyInst(result, SymLit(SSym('false'))))
-        false.terminator = bytecode.Jmp(end)
+        false.add_inst(bytecode.ReturnInst(SymLit(SSym('false'))))
 
         class Generator:
             def __init__(self, gen: Any):

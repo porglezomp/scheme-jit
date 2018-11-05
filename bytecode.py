@@ -18,13 +18,7 @@ class Parameter(ABC):
 
 class Inst(ABC):
     @abstractmethod
-    def run(self, env: EvalEnv) -> None:
-        ...
-
-
-class TerminatorInst(ABC):
-    @abstractmethod
-    def run(self, env: EvalEnv) -> BB:
+    def run(self, env: EvalEnv) -> Optional[BB]:
         ...
 
 
@@ -296,11 +290,11 @@ class CallInst(Inst):
 
 
 @dataclass
-class Jmp(TerminatorInst):
+class JmpInst(Inst):
     target: BB
 
     def __repr__(self) -> str:
-        return f"Jmp(target={self.target.name})"
+        return f"JmpInst(target={self.target.name})"
 
     def run(self, env: EvalEnv) -> BB:
         env.stats[type(self)] += 1
@@ -308,31 +302,50 @@ class Jmp(TerminatorInst):
 
 
 @dataclass
-class Br(TerminatorInst):
+class BrInst(Inst):
     cond: Parameter
-    then_target: BB
-    else_target: BB
+    target: BB
 
     def __repr__(self) -> str:
-        return (f"Br(cond={self.cond}, "
-                "then_target={self.then_target.name}, "
-                "else_target={self.else_target.name})")
+        return (f"BrInst(cond={self.cond}, target={self.target.name})")
 
-    def run(self, env: EvalEnv) -> BB:
+    def run(self, env: EvalEnv) -> Optional[BB]:
         env.stats[type(self)] += 1
         res = env[self.cond]
+        assert res in (SSym('true'), SSym('false'))
         if res == SSym('true'):
-            return self.then_target
-        elif res == SSym('false'):
-            return self.else_target
-        else:
-            raise ValueError(f"Invalid boolean {res} in Br")
+            return self.target
+        return None
+
+
+@dataclass
+class BrnInst(Inst):
+    cond: Parameter
+    target: BB
+
+    def __repr__(self) -> str:
+        return (f"BrnInst(cond={self.cond}, target={self.target.name})")
+
+    def run(self, env: EvalEnv) -> Optional[BB]:
+        env.stats[type(self)] += 1
+        res = env[self.cond]
+        assert res in (SSym('true'), SSym('false'))
+        if res == SSym('false'):
+            return self.target
+        return None
+
+
+@dataclass
+class ReturnInst(Inst):
+    ret: Parameter
+
+    def run(self, env: EvalEnv) -> Optional[BB]:
+        return ReturnBlock(f"return {self.ret}", self.ret)
 
 
 @dataclass
 class BasicBlock(BB):
     name: str
-    terminator: Optional[TerminatorInst] = None
     instructions: List[Inst] = field(default_factory=list)
 
     def add_inst(self, inst: Inst) -> None:
@@ -343,10 +356,12 @@ class BasicBlock(BB):
         for inst in self.instructions:
             if isinstance(inst, CallInst):
                 yield from inst.run_call(env)
-            inst.run(env)
+            next_bb = inst.run(env)
             yield env.copy()
-        assert self.terminator
-        return self.terminator.run(env)
+            if next_bb is not None:
+                break
+        assert next_bb
+        return next_bb
 
 
 @dataclass
@@ -358,13 +373,15 @@ class ReturnBlock(BB):
 @dataclass
 class Function:
     params: List[Var]
-    start: BasicBlock
-    finish: ReturnBlock
+    start: BB
 
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, Value]:
         assert all(p in env for p in self.params)
-        block: BB = self.start
-        while isinstance(block, BasicBlock):
-            block = yield from block.run(env)
-        assert isinstance(block, ReturnBlock)
-        return env[block.ret]
+        block = self.start
+        while True:
+            if isinstance(block, BasicBlock):
+                block = yield from block.run(env)
+            elif isinstance(block, ReturnBlock):
+                return env[block.ret]
+            else:
+                raise NotImplementedError(f"Unexpected BB type: {type(block)}")
