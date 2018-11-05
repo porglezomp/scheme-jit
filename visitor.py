@@ -100,7 +100,7 @@ class Visitor:
         if not func.is_lambda:
             self.visit(func.name)
 
-        for param in func.formals:
+        for param in func.params:
             self.visit(param)
 
         for expr in func.body:

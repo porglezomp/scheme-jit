@@ -85,10 +85,7 @@ class EnvAssigner(Visitor):
     def visit_SFunction(self, func: SFunction) -> None:
         func_env = self._parent_env.extend()
 
-        for param in func.formals:
-            assert (
-                isinstance(param, SSym)
-            ), f'Formals must be symbols, not {type(param)}'
+        for param in func.params:
             func_env[param] = Nil
 
         func.environment = func_env
