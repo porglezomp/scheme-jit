@@ -49,7 +49,7 @@ class EnvAssigner(Visitor):
     {
         egg: Nil
     }
-    (SFunction(name=SSym(name='lambda0'),...) 42)
+    SCall(func=SFunction(name=SSym(name='lambda0'),...), args=[SNum(value=42)])
     {
         egg: Nil
     }
@@ -64,10 +64,6 @@ class EnvAssigner(Visitor):
     sausage
     {
         sausage: Nil
-    }
-    (42)
-    {
-        egg: Nil
     }
     42
     {
