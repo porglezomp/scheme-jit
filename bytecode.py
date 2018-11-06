@@ -7,6 +7,7 @@ from typing import Counter, Dict, Generator, List, Optional
 
 import scheme
 from environment import Environment
+from errors import Trap
 from scheme import SNum, SSym, SVect, Value
 
 
@@ -341,6 +342,14 @@ class ReturnInst(Inst):
 
     def run(self, env: EvalEnv) -> Optional[BB]:
         return ReturnBlock(f"return {self.ret}", self.ret)
+
+
+@dataclass
+class TrapInst(Inst):
+    message: str
+
+    def run(self, env: EvalEnv) -> None:
+        raise Trap(self.message)
 
 
 @dataclass
