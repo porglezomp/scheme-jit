@@ -1,8 +1,8 @@
 import unittest
 
 import scheme
-from scheme import (Nil, SBool, SCall, SConditional, SFunction, SNum, SPair,
-                    SSym, SVect)
+from scheme import (Nil, Quote, SBool, SCall, SConditional, SFunction, SNum,
+                    SPair, SSym, SVect)
 
 
 class ParserTestCase(unittest.TestCase):
@@ -48,6 +48,15 @@ class ParserTestCase(unittest.TestCase):
         )
 
     def test_quote(self) -> None:
+        self.assertEqual(Quote(Nil), scheme.parse("'()")[0])
+        self.assertEqual(Quote(Nil), scheme.parse("(quote ())")[0])
+
+        self.assertEqual(Quote(scheme.to_slist([SNum(1), SNum(2), SNum(3)])),
+                         scheme.parse("'(1 2 3)")[0])
+
+        self.assertEqual(Quote(scheme.to_slist([SNum(1), SNum(2), SNum(3)])),
+                         scheme.parse("(quote (1 2 3))")[0])
+
         self.assertEqual(
             scheme.parse("'(1 2 3)"), scheme.parse("(quote (1 2 3))"))
 
@@ -102,8 +111,24 @@ class ParserTestCase(unittest.TestCase):
         )
 
     def test_lambda_called_inline(self) -> None:
+        self.maxDiff = None
         prog = '((lambda (spam egg) (+ spam egg)) 42 43)'
-        self.fail()
+        self.assertEqual(
+            [
+                SCall(
+                    SFunction(
+                        SSym('lambda0'),
+                        [SSym('spam'), SSym('egg')],
+                        scheme.to_slist([
+                            SCall(SSym('+'), [SSym('spam'), SSym('egg')])
+                        ]),
+                        is_lambda=True
+                    ),
+                    [SNum(42), SNum(43)]
+                )
+            ],
+            scheme.parse(prog)
+        )
 
 
 if __name__ == '__main__':

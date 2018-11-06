@@ -244,7 +244,7 @@ class SFunction(Value):
 
 @dataclass
 class SCall(SExp):
-    func_name: SSym
+    func: Union[SSym, SFunction]
     args: List[SExp]
 
 
@@ -297,11 +297,12 @@ def parse(x: str) -> List[SExp]:
                 return parse_lambda(tokens)
 
             if parsed_first == SSym('quote'):
-                return parse_quote(tokens)
+                quote, tokens = parse_quote(tokens)
+                return quote, tokens[1:]
 
             if isinstance(parsed_first, SFunction):
                 assert parsed_first.is_lambda
-                return parse_call(parsed_first.name, tokens)
+                return parse_call(parsed_first, tokens)
 
             if isinstance(parsed_first, SSym):
                 return parse_call(parsed_first, tokens)
@@ -362,10 +363,10 @@ def parse(x: str) -> List[SExp]:
 
         return formals, tokens[1:]
 
-    def parse_call(func_name: SSym,
+    def parse_call(func: Union[SSym, SFunction],
                    tokens: List[str]) -> Tuple[SExp, List[str]]:
         args, tokens = read_list_tail(tokens)
-        return SCall(func_name, args), tokens[1:]
+        return SCall(func, args), tokens[1:]
 
     def parse_quote(tokens: List[str]) -> Tuple[SExp, List[str]]:
         assert tokens[0] == '(', 'Expected list'
