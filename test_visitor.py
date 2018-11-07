@@ -1,5 +1,5 @@
-from typing import List, Tuple
 import unittest
+from typing import List, Tuple
 
 import scheme
 from scheme import (Nil, Quote, SBool, SCall, SConditional, SExp, SFunction,
@@ -215,3 +215,4 @@ class ExpressionCounter(Visitor):
 
     def visit_SExp(self, expr: SExp) -> None:
         self.num_exprs += 1
+        super().visit_SExp(expr)

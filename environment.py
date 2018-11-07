@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, Generic, Optional, TypeVar
 
 from scheme import Nil, SExp, SFunction, SNum, SPair, SSym, parse
 from visitor import Visitor
@@ -12,6 +12,7 @@ class EnvAssigner(Visitor):
     ...     def visit_SExp(self, expr: SExp):
     ...         print(expr)
     ...         print(expr.environment)
+    ...         super().visit_SExp(expr)
     >>> code = '(define (spam egg) egg)'
     >>> parsed = parse(code)
     >>> EnvAssigner(GlobalEnvironment.get()).visit(parsed)
@@ -77,6 +78,7 @@ class EnvAssigner(Visitor):
 
     def visit_SExp(self, expr: SExp) -> None:
         expr.environment = self._parent_env
+        super().visit_SExp(expr)
 
     def visit_SFunction(self, func: SFunction) -> None:
         func_env = self._parent_env.extend()
@@ -111,7 +113,10 @@ class GlobalEnvironment:
     _instance: Optional[Environment] = None
 
 
-class Environment:
+EnvValType = TypeVar('EnvValType')
+
+
+class Environment(Generic[EnvValType]):
     """Return a new environment consisting of a single empty frame.
 
     Doctests adopted from EECS 490 Scheme Interpreter project.
@@ -157,11 +162,11 @@ class Environment:
     >>> subenv1[SSym('y')], subenv2[SSym('y')], subenv3[SSym('y')]
     (SNum(value=5), SNum(value=6), SNum(value=9))
     """
-    def __init__(self, parent: Optional[Environment]):
+    def __init__(self, parent: Optional[Environment[EnvValType]]):
         self._parent = parent
-        self._frame: Dict[SSym, SExp] = {}
+        self._frame: Dict[SSym, EnvValType] = {}
 
-    def __getitem__(self, name: SSym) -> SExp:
+    def __getitem__(self, name: SSym) -> EnvValType:
         if name in self._frame:
             return self._frame[name]
 
@@ -170,7 +175,7 @@ class Environment:
 
         return self._parent[name]
 
-    def __setitem__(self, name: SSym, value: SExp) -> None:
+    def __setitem__(self, name: SSym, value: EnvValType) -> None:
         self._frame[name] = value
 
     def __contains__(self, name: SSym) -> bool:
@@ -179,7 +184,22 @@ class Environment:
 
         return self._parent is not None and name in self._parent
 
-    def extend(self) -> Environment:
+    def in_local(self, name: SSym) -> bool:
+        """Returns true if name exists in the innermost frame.
+        >>> env = Environment(None)
+        >>> local_env = env.extend()
+        >>> env[SSym('spam')] = Nil
+        >>> local_env[SSym('egg')] = Nil
+        >>> SSym('spam') in local_env
+        True
+        >>> local_env.in_local(SSym('spam'))
+        False
+        >>> local_env.in_local(SSym('egg'))
+        True
+        """
+        return name in self._frame
+
+    def extend(self) -> Environment[EnvValType]:
         return Environment(self)
 
     def __str__(self) -> str:

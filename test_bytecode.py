@@ -2,8 +2,8 @@ import unittest
 from typing import Any
 
 import bytecode
-from bytecode import Binop, NumLit, SymLit, Var
-from scheme import SNum, SSym, SVect
+from bytecode import Binop, BoolLit, NumLit, SymLit, Var
+from scheme import SBool, SNum, SSym, SVect
 
 
 class BytecodeTestCast(unittest.TestCase):
@@ -136,9 +136,9 @@ class BytecodeTestCast(unittest.TestCase):
         bb0.add_inst(bytecode.LoadInst(Var("v0"), Var("v0"), NumLit(SNum(1))))
         bb0.add_inst(bytecode.JmpInst(bb0))
 
-        true.add_inst(bytecode.ReturnInst(SymLit(SSym('true'))))
+        true.add_inst(bytecode.ReturnInst(BoolLit(SBool(True))))
 
-        false.add_inst(bytecode.ReturnInst(SymLit(SSym('false'))))
+        false.add_inst(bytecode.ReturnInst(BoolLit(SBool(False))))
 
         class Generator:
             def __init__(self, gen: Any):
@@ -155,11 +155,11 @@ class BytecodeTestCast(unittest.TestCase):
         env = bytecode.EvalEnv(local_env={Var("v0"): SNum(42)})
         gen = Generator(is_list.run(env))
         gen.run()
-        self.assertEqual(gen.value, SSym('false'))
+        self.assertEqual(gen.value, SBool(False))
 
         env = bytecode.EvalEnv(local_env={
             Var("v0"): SVect([SNum(42), SVect([SNum(69), SVect([])])])
         })
         gen = Generator(is_list.run(env))
         gen.run()
-        self.assertEqual(gen.value, SSym('true'))
+        self.assertEqual(gen.value, SBool(True))

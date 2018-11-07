@@ -1,6 +1,6 @@
 from typing import List, Union
 
-from scheme import (Nil, Quote, SCall, SConditional, SBool, SExp, SFunction,
+from scheme import (Nil, Quote, SBool, SCall, SConditional, SExp, SFunction,
                     SNum, SPair, SSym, SVect)
 
 
@@ -11,11 +11,10 @@ class Visitor:
         if isinstance(expr, list):
             for item in expr:
                 self.visit(item)
+        else:
+            self.visit_SExp(expr)
 
-            return
-
-        self.visit_SExp(expr)
-
+    def visit_SExp(self, expr: SExp) -> None:
         if isinstance(expr, SNum):
             self.visit_SNum(expr)
         elif isinstance(expr, SBool):
@@ -34,9 +33,6 @@ class Visitor:
             self.visit_SCall(expr)
         elif isinstance(expr, SConditional):
             self.visit_SConditional(expr)
-
-    def visit_SExp(self, expr: SExp) -> None:
-        pass
 
     def visit_SNum(self, num: SNum) -> None:
         pass
