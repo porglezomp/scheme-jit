@@ -147,8 +147,21 @@ class EmitExpressionTestCase(unittest.TestCase):
 
         self.assertEqual(expected_instrs, self.bb.instructions)
 
-    def test_emit_local_param_function_call(self) -> None:
-        self.fail()
+    def test_emit_local_var_function_call(self) -> None:
+        prog = scheme.parse('(local_var 42)')
+        lambda_var = bytecode.Var('local_var')
+        self.expr_emitter.local_env[scheme.SSym('local_var')] = lambda_var
+        self.expr_emitter.visit(prog)
+
+        expected_instrs = [
+            bytecode.CallInst(
+                bytecode.Var('var0'),
+                lambda_var,
+                [bytecode.NumLit(scheme.SNum(42))]
+            )
+        ]
+
+        self.assertEqual(expected_instrs, self.bb.instructions)
 
     def test_lambda_function_called_immediately(self) -> None:
         prog = scheme.parse('((lambda (spam) spam) 42)')
