@@ -1,4 +1,4 @@
-from typing import Dict, Iterator, List
+from typing import Dict, Iterator, List, Optional
 
 import bytecode
 import scheme
@@ -91,6 +91,8 @@ class ExpressionEmitter(Visitor):
         elif sym in self.global_env:
             dest_var = bytecode.Var(next(self.var_names))
             lookup_instr = bytecode.LookupInst(dest_var, bytecode.SymLit(sym))
+            self.parent_block.add_inst(lookup_instr)
+            self.result = dest_var
         else:
             raise EnvBindingNotFound(f'Name not found: "{sym.name}"')
 
@@ -101,15 +103,17 @@ class ExpressionEmitter(Visitor):
         self.parent_block.add_inst(instr)
         self.result = var
 
+        parent_block = self.parent_block
         for (i, expr) in enumerate(vect.items):
             expr_emitter = ExpressionEmitter(
-                self.parent_block, self.bb_names, self.var_names,
+                parent_block, self.bb_names, self.var_names,
                 self.local_env, self.global_env)
             expr_emitter.visit(expr)
+            parent_block = expr_emitter.end_block
 
             store = bytecode.StoreInst(
                 var, bytecode.NumLit(scheme.SNum(i)), expr_emitter.result)
-            self.parent_block.add_inst(store)
+            parent_block.add_inst(store)
 
     def visit_Quote(self, quote: scheme.Quote) -> None:
         quoted_exprs = list(quote.slist)
@@ -144,8 +148,32 @@ class ExpressionEmitter(Visitor):
 
         self.result = cdr
 
-    # def visit_SCall(self, call: scheme.SCall) -> None:
-    #     if call.
+    def visit_SCall(self, call: scheme.SCall) -> None:
+        func_expr_emitter = ExpressionEmitter(
+            self.parent_block, self.bb_names, self.var_names,
+            self.local_env, self.global_env)
+        func_expr_emitter.visit(call.func)
+
+        args: List[bytecode.Parameter] = []
+        arg_emitter: Optional[ExpressionEmitter] = None
+        for arg in call.args:
+            arg_emitter = ExpressionEmitter(
+                func_expr_emitter.end_block, self.bb_names, self.var_names,
+                self.local_env, self.global_env
+            )
+            arg_emitter.visit(arg)
+            args.append(arg_emitter.result)
+
+        call_result_var = bytecode.Var(next(self.var_names))
+        call_instr = bytecode.CallInst(
+            call_result_var, func_expr_emitter.result, args)
+
+        if arg_emitter is None:
+            func_expr_emitter.end_block.add_inst(call_instr)
+        else:
+            arg_emitter.end_block.add_inst(call_instr)
+
+        self.result = call_result_var
 
     # def visit_SExp(self, expr: scheme.SExp) -> None:
     #     super().visit_SExp(expr)
