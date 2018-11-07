@@ -143,10 +143,7 @@ class BinopInst(Inst):
             assert isinstance(lhs, SSym) and isinstance(rhs, SSym)
             env[self.dest] = scheme.make_bool(lhs == rhs)
         elif self.op == Binop.PTR_EQ:
-            lhs_ok = isinstance(lhs, SVect) or isinstance(lhs, SFunction)
-            rhs_ok = isinstance(rhs, SVect) or isinstance(rhs, SFunction)
-            assert lhs_ok and rhs_ok
-            env[self.dest] = scheme.make_bool(lhs is rhs)
+            env[self.dest] = scheme.make_bool(lhs.address() == rhs.address())
         else:
             assert isinstance(lhs, SNum) and isinstance(rhs, SNum)
             if self.op == Binop.ADD:
