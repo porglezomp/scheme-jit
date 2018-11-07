@@ -3,7 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Counter, Dict, Generator, List, Optional
+from typing import (Counter, Dict, Generator, Iterable, Iterator, List,
+                    Optional, Set)
 
 import scheme
 from environment import Environment
@@ -22,9 +23,15 @@ class Inst(ABC):
     def run(self, env: EvalEnv) -> Optional[BB]:
         ...
 
+    def successors(self) -> Iterable[BB]:
+        return []
+
 
 class BB(ABC):
     name: str
+
+    def successors(self) -> Iterable[BB]:
+        return []
 
 
 @dataclass(frozen=True)
@@ -34,6 +41,9 @@ class Var(Parameter):
     def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return env[self]
 
+    def __str__(self) -> str:
+        return self.name
+
 
 @dataclass(frozen=True)
 class NumLit(Parameter):
@@ -42,6 +52,9 @@ class NumLit(Parameter):
     def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return self.value
 
+    def __str__(self) -> str:
+        return str(self.value)
+
 
 @dataclass(frozen=True)
 class SymLit(Parameter):
@@ -49,6 +62,9 @@ class SymLit(Parameter):
 
     def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return self.value
+
+    def __str__(self) -> str:
+        return f"'{self.value}"
 
 
 class EvalEnv:
@@ -166,6 +182,9 @@ class BinopInst(Inst):
             else:
                 raise ValueError(f"Unexpected op {self.op}")
 
+    def __str__(self) -> str:
+        return f"{self.dest} = {self.op} {self.lhs} {self.rhs}"
+
 
 @dataclass
 class TypeofInst(Inst):
@@ -176,6 +195,9 @@ class TypeofInst(Inst):
         env.stats[type(self)] += 1
         env[self.dest] = env[self.value].type_name()
 
+    def __str__(self) -> str:
+        return f"{self.dest} = typeof {self.value}"
+
 
 @dataclass
 class CopyInst(Inst):
@@ -185,6 +207,9 @@ class CopyInst(Inst):
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
         env[self.dest] = env[self.value]
+
+    def __str__(self) -> str:
+        return f"{self.dest} = {self.value}"
 
 
 @dataclass
@@ -200,6 +225,9 @@ class LookupInst(Inst):
         assert isinstance(value, Value)
         env[self.dest] = value
 
+    def __str__(self) -> str:
+        return f"{self.dest} = lookup {self.name}"
+
 
 @dataclass
 class AllocInst(Inst):
@@ -211,6 +239,9 @@ class AllocInst(Inst):
         size = env[self.size]
         assert isinstance(size, SNum)
         env[self.dest] = SVect([scheme.Nil] * size.value)
+
+    def __str__(self) -> str:
+        return f"{self.dest} = alloc {self.size}"
 
 
 @dataclass
@@ -229,6 +260,9 @@ class LoadInst(Inst):
         assert isinstance(value, Value)
         env[self.dest] = value
 
+    def __str__(self) -> str:
+        return f"{self.dest} = load [{self.addr} + {self.offset}]"
+
 
 @dataclass
 class StoreInst(Inst):
@@ -244,6 +278,9 @@ class StoreInst(Inst):
         assert index.value < len(vect.items)
         vect.items[index.value] = env[self.value]
 
+    def __str__(self) -> str:
+        return f"store [{self.addr} + {self.offset}] = {self.value}"
+
 
 @dataclass
 class LengthInst(Inst):
@@ -256,11 +293,14 @@ class LengthInst(Inst):
         assert isinstance(vect, SVect)
         env[self.dest] = SNum(len(vect.items))
 
+    def __str__(self) -> str:
+        return f"{self.dest} = length {self.addr}"
+
 
 @dataclass
 class CallInst(Inst):
     dest: Var
-    name: Parameter
+    func: Parameter
     args: List[Parameter]
 
     def run(self, env: EvalEnv) -> None:
@@ -269,7 +309,7 @@ class CallInst(Inst):
             pass
 
     def run_call(self, env: EvalEnv) -> Generator[EvalEnv, None, None]:
-        func = env[self.name]
+        func = env[self.func]
         assert isinstance(func, scheme.SFunction)
         if func.code is None:
             raise NotImplementedError("JIT compiling functions!")
@@ -280,6 +320,10 @@ class CallInst(Inst):
             name: env[arg] for name, arg in zip(func_code.params, self.args)
         }
         env[self.dest] = yield from func_code.run(func_env)
+
+    def __str__(self) -> str:
+        args = ', '.join(str(arg) for arg in self.args)
+        return f"{self.dest} = call {self.func} ({args})"
 
 
 @dataclass
@@ -292,6 +336,12 @@ class JmpInst(Inst):
     def run(self, env: EvalEnv) -> BB:
         env.stats[type(self)] += 1
         return self.target
+
+    def successors(self) -> Iterable[BB]:
+        return [self.target]
+
+    def __str__(self) -> str:
+        return f"jmp {self.target.name}"
 
 
 @dataclass
@@ -310,6 +360,12 @@ class BrInst(Inst):
             return self.target
         return None
 
+    def successors(self) -> Iterable[BB]:
+        return [self.target]
+
+    def __str__(self) -> str:
+        return f"br {self.cond} {self.target.name}"
+
 
 @dataclass
 class BrnInst(Inst):
@@ -327,6 +383,12 @@ class BrnInst(Inst):
             return self.target
         return None
 
+    def successors(self) -> Iterable[BB]:
+        return [self.target]
+
+    def __str__(self) -> str:
+        return f"brn {self.cond} {self.target.name}"
+
 
 @dataclass
 class ReturnInst(Inst):
@@ -334,6 +396,9 @@ class ReturnInst(Inst):
 
     def run(self, env: EvalEnv) -> Optional[BB]:
         return ReturnBlock(f"return {self.ret}", self.ret)
+
+    def __str__(self) -> str:
+        return f"return {self.ret}"
 
 
 @dataclass
@@ -343,11 +408,19 @@ class TrapInst(Inst):
     def run(self, env: EvalEnv) -> None:
         raise Trap(self.message)
 
+    def __str__(self) -> str:
+        return f"trap {self.message!r}"
+
 
 @dataclass
 class BasicBlock(BB):
     name: str
     instructions: List[Inst] = field(default_factory=list)
+
+    def __str__(self) -> str:
+        return f"{self.name}:\n" + "\n".join(
+            "  " + str(i) for i in self.instructions
+        )
 
     def add_inst(self, inst: Inst) -> None:
         self.instructions.append(inst)
@@ -363,6 +436,10 @@ class BasicBlock(BB):
                 break
         assert next_bb
         return next_bb
+
+    def successors(self) -> Iterator[BB]:
+        for inst in self.instructions:
+            yield from inst.successors()
 
 
 @dataclass
@@ -386,3 +463,23 @@ class Function:
                 return env[block.ret]
             else:
                 raise NotImplementedError(f"Unexpected BB type: {type(block)}")
+
+    def blocks(self) -> Iterator[BB]:
+        """
+        Iterate over the basic blocks in some order.
+
+        Ideally this would be the preorder traversal of the dom-tree.
+        """
+        visited: Set[int] = set()
+        blocks = [self.start]
+        while blocks:
+            block = blocks.pop()
+            yield block
+            blocks.extend(b for b in block.successors()
+                          if id(b) not in visited)
+            visited |= set(map(id, blocks))
+
+    def __str__(self) -> str:
+        return (f"function ({', '.join(x.name for x in self.params)})"
+                f" entry={self.start.name}\n"
+                + '\n\n'.join(str(b) for b in self.blocks()))
