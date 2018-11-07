@@ -197,6 +197,150 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.assertEqual(expected_instrs, self.bb.instructions)
 
     def test_emit_conditional(self) -> None:
+        prog = scheme.parse('(if true 42 43)')
+        self.expr_emitter.visit(prog)
+
+        result_var = bytecode.Var('var0')
+        self.assertEqual(result_var, self.expr_emitter.result)
+        self.assertIsNot(
+            self.expr_emitter.parent_block, self.expr_emitter.end_block)
+
+        expected_end_block = bytecode.BasicBlock('bb3')
+
+        expected_else_block = bytecode.BasicBlock(
+            'bb2',
+            [
+                bytecode.CopyInst(
+                    result_var, bytecode.NumLit(scheme.SNum(43))
+                ),
+                bytecode.JmpInst(expected_end_block)
+            ]
+        )
+
+        expected_then_block = bytecode.BasicBlock(
+            'bb1',
+            [
+                bytecode.CopyInst(
+                    result_var, bytecode.NumLit(scheme.SNum(42))
+                ),
+                bytecode.JmpInst(expected_end_block)
+            ]
+        )
+
+        expected_parent_block = bytecode.BasicBlock(
+            'bb0',
+            [
+                bytecode.BrInst(
+                    bytecode.BoolLit(scheme.SBool(True)),
+                    expected_then_block
+                ),
+                bytecode.JmpInst(expected_else_block)
+            ]
+        )
+
+        self.assertEqual(expected_parent_block, self.expr_emitter.parent_block)
+        self.assertEqual(expected_end_block, self.expr_emitter.end_block)
+
+    def test_nested_conditionals(self) -> None:
+        prog = scheme.parse('(if true (if false 42 43) (if true 44 45))')
+        self.expr_emitter.visit(prog)
+
+        outer_result_var = bytecode.Var('var0')
+
+        outer_end_block = bytecode.BasicBlock('bb9')
+
+        then_result_var = bytecode.Var('var1')
+        then_end_block = bytecode.BasicBlock(
+            'bb5',
+            [
+                bytecode.CopyInst(outer_result_var, then_result_var),
+                bytecode.JmpInst(outer_end_block)
+            ]
+        )
+        then_then_block = bytecode.BasicBlock(
+            'bb3',
+            [
+                bytecode.CopyInst(
+                    then_result_var, bytecode.NumLit(scheme.SNum(42))
+                ),
+                bytecode.JmpInst(then_end_block)
+            ]
+        )
+        then_else_block = bytecode.BasicBlock(
+            'bb4',
+            [
+                bytecode.CopyInst(
+                    then_result_var, bytecode.NumLit(scheme.SNum(43))
+                ),
+                bytecode.JmpInst(then_end_block)
+            ]
+        )
+
+        else_result_var = bytecode.Var('var2')
+        else_end_block = bytecode.BasicBlock(
+            'bb8',
+            [
+                bytecode.CopyInst(outer_result_var, else_result_var),
+                bytecode.JmpInst(outer_end_block)
+            ]
+        )
+        else_then_block = bytecode.BasicBlock(
+            'bb6',
+            [
+                bytecode.CopyInst(
+                    else_result_var, bytecode.NumLit(scheme.SNum(44))
+                ),
+                bytecode.JmpInst(else_end_block)
+            ]
+        )
+        else_else_block = bytecode.BasicBlock(
+            'bb7',
+            [
+                bytecode.CopyInst(
+                    else_result_var, bytecode.NumLit(scheme.SNum(45))
+                ),
+                bytecode.JmpInst(else_end_block)
+            ]
+        )
+
+        then_block = bytecode.BasicBlock(
+            'bb1',
+            [
+                bytecode.BrInst(
+                    bytecode.BoolLit(scheme.SBool(False)), then_then_block
+                ),
+                bytecode.JmpInst(then_else_block)
+            ]
+        )
+        else_block = bytecode.BasicBlock(
+            'bb2',
+            [
+                bytecode.BrInst(
+                    bytecode.BoolLit(scheme.SBool(True)), else_then_block
+                ),
+                bytecode.JmpInst(else_else_block)
+            ]
+        )
+
+        entry_block = bytecode.BasicBlock(
+            'bb0',
+            [
+                bytecode.BrInst(
+                    bytecode.BoolLit(scheme.SBool(True)), then_block
+                ),
+                bytecode.JmpInst(else_block)
+            ]
+        )
+
+        self.assertEqual(entry_block, self.expr_emitter.parent_block)
+        self.assertEqual(outer_end_block, self.expr_emitter.end_block)
+
+        self.assertEqual(outer_result_var, self.expr_emitter.result)
+
+    def test_conditional_in_conditional_test_expr(self) -> None:
+        self.fail()
+
+    def test_conditional_in_function_call(self) -> None:
         self.fail()
 
 

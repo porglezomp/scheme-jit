@@ -77,6 +77,46 @@ class ExpressionEmitter(Visitor):
         self.parent_block.add_inst(lookup_lambda_instr)
         self.result = lambda_var
 
+    def visit_SConditional(self, conditional: scheme.SConditional) -> None:
+        test_emitter = ExpressionEmitter(
+            self.parent_block, self.bb_names, self.var_names,
+            self.local_env, self.global_env)
+        test_emitter.visit(conditional.test)
+
+        then_block = bytecode.BasicBlock(next(self.bb_names))
+        else_block = bytecode.BasicBlock(next(self.bb_names))
+
+        result_var = bytecode.Var(next(self.var_names))
+
+        then_br_instr = bytecode.BrInst(test_emitter.result, then_block)
+        else_br_instr = bytecode.JmpInst(else_block)
+
+        test_emitter.end_block.add_inst(then_br_instr)
+        test_emitter.end_block.add_inst(else_br_instr)
+
+        then_emitter = ExpressionEmitter(
+            then_block, self.bb_names, self.var_names,
+            self.local_env, self.global_env)
+        then_emitter.visit(conditional.then_expr)
+
+        then_result_instr = bytecode.CopyInst(result_var, then_emitter.result)
+        then_emitter.end_block.add_inst(then_result_instr)
+
+        else_emitter = ExpressionEmitter(
+            else_block, self.bb_names, self.var_names,
+            self.local_env, self.global_env)
+        else_emitter.visit(conditional.else_expr)
+
+        else_result_instr = bytecode.CopyInst(result_var, else_emitter.result)
+        else_emitter.end_block.add_inst(else_result_instr)
+
+        new_end_block = bytecode.BasicBlock(next(self.bb_names))
+        then_emitter.end_block.add_inst(bytecode.JmpInst(new_end_block))
+        else_emitter.end_block.add_inst(bytecode.JmpInst(new_end_block))
+        self.end_block = new_end_block
+
+        self.result = result_var
+
     def visit_SNum(self, num: scheme.SNum) -> None:
         self.result = bytecode.NumLit(num)
 
