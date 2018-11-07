@@ -74,6 +74,9 @@ class BoolLit(Parameter):
     def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return self.value
 
+    def __str__(self) -> str:
+        return f"'{self.value}"
+
 
 class EvalEnv:
     _local_env: Dict[Var, Value]

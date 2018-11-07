@@ -65,6 +65,9 @@ class SBool(Value):
     def __str__(self) -> str:
         return str(self.value)
 
+    def type_name(self) -> SSym:
+        return SSym('bool')
+
 
 @dataclass
 class SSym(Value):
