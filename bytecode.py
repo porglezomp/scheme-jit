@@ -41,6 +41,9 @@ class Var(Parameter):
     def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return env[self]
 
+    def __str__(self) -> str:
+        return self.name
+
 
 @dataclass(frozen=True)
 class NumLit(Parameter):
@@ -49,6 +52,9 @@ class NumLit(Parameter):
     def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return self.value
 
+    def __str__(self) -> str:
+        return str(self.value)
+
 
 @dataclass(frozen=True)
 class SymLit(Parameter):
@@ -56,6 +62,9 @@ class SymLit(Parameter):
 
     def lookup_self(self, env: Dict[Var, Value]) -> Value:
         return self.value
+
+    def __str__(self) -> str:
+        return f"'{self.value}"
 
 
 class EvalEnv:
@@ -173,6 +182,9 @@ class BinopInst(Inst):
             else:
                 raise ValueError(f"Unexpected op {self.op}")
 
+    def __str__(self) -> str:
+        return f"{self.dest} = {self.op} {self.lhs} {self.rhs}"
+
 
 @dataclass
 class TypeofInst(Inst):
@@ -191,6 +203,9 @@ class TypeofInst(Inst):
         else:
             raise ValueError(f"Parameter {value} wasn't an expected type.")
 
+    def __str__(self) -> str:
+        return f"{self.dest} = typeof {self.value}"
+
 
 @dataclass
 class CopyInst(Inst):
@@ -200,6 +215,9 @@ class CopyInst(Inst):
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
         env[self.dest] = env[self.value]
+
+    def __str__(self) -> str:
+        return f"{self.dest} = {self.value}"
 
 
 @dataclass
@@ -215,6 +233,9 @@ class LookupInst(Inst):
         assert isinstance(value, Value)
         env[self.dest] = value
 
+    def __str__(self) -> str:
+        return f"{self.dest} = lookup {self.name}"
+
 
 @dataclass
 class AllocInst(Inst):
@@ -226,6 +247,9 @@ class AllocInst(Inst):
         size = env[self.size]
         assert isinstance(size, SNum)
         env[self.dest] = SVect([scheme.Nil] * size.value)
+
+    def __str__(self) -> str:
+        return f"{self.dest} = alloc {self.size}"
 
 
 @dataclass
@@ -244,6 +268,9 @@ class LoadInst(Inst):
         assert isinstance(value, Value)
         env[self.dest] = value
 
+    def __str__(self) -> str:
+        return f"{self.dest} = load [{self.addr} + {self.offset}]"
+
 
 @dataclass
 class StoreInst(Inst):
@@ -259,6 +286,9 @@ class StoreInst(Inst):
         assert index.value < len(vect.items)
         vect.items[index.value] = env[self.value]
 
+    def __str__(self) -> str:
+        return f"store [{self.addr} + {self.offset}] = {self.value}"
+
 
 @dataclass
 class LengthInst(Inst):
@@ -271,11 +301,14 @@ class LengthInst(Inst):
         assert isinstance(vect, SVect)
         env[self.dest] = SNum(len(vect.items))
 
+    def __str__(self) -> str:
+        return f"{self.dest} = length {self.addr}"
+
 
 @dataclass
 class CallInst(Inst):
     dest: Var
-    name: Parameter
+    func: Parameter
     args: List[Parameter]
 
     def run(self, env: EvalEnv) -> None:
@@ -284,7 +317,7 @@ class CallInst(Inst):
             pass
 
     def run_call(self, env: EvalEnv) -> Generator[EvalEnv, None, None]:
-        func = env[self.name]
+        func = env[self.func]
         assert isinstance(func, scheme.SFunction)
         if func.code is None:
             raise NotImplementedError("JIT compiling functions!")
@@ -295,6 +328,10 @@ class CallInst(Inst):
             name: env[arg] for name, arg in zip(func_code.params, self.args)
         }
         env[self.dest] = yield from func_code.run(func_env)
+
+    def __str__(self) -> str:
+        args = ', '.join(str(arg) for arg in self.args)
+        return f"{self.dest} = call {self.func} ({args})"
 
 
 @dataclass
@@ -310,6 +347,9 @@ class JmpInst(Inst):
 
     def successors(self) -> Iterable[BB]:
         return [self.target]
+
+    def __str__(self) -> str:
+        return f"jmp {self.target.name}"
 
 
 @dataclass
@@ -331,6 +371,9 @@ class BrInst(Inst):
     def successors(self) -> Iterable[BB]:
         return [self.target]
 
+    def __str__(self) -> str:
+        return f"br {self.cond} {self.target.name}"
+
 
 @dataclass
 class BrnInst(Inst):
@@ -351,6 +394,9 @@ class BrnInst(Inst):
     def successors(self) -> Iterable[BB]:
         return [self.target]
 
+    def __str__(self) -> str:
+        return f"brn {self.cond} {self.target.name}"
+
 
 @dataclass
 class ReturnInst(Inst):
@@ -359,6 +405,9 @@ class ReturnInst(Inst):
     def run(self, env: EvalEnv) -> Optional[BB]:
         return ReturnBlock(f"return {self.ret}", self.ret)
 
+    def __str__(self) -> str:
+        return f"return {self.ret}"
+
 
 @dataclass
 class TrapInst(Inst):
@@ -366,6 +415,9 @@ class TrapInst(Inst):
 
     def run(self, env: EvalEnv) -> None:
         raise Trap(self.message)
+
+    def __str__(self) -> str:
+        return f"trap {self.message!r}"
 
 
 @dataclass
@@ -436,5 +488,6 @@ class Function:
             visited |= set(map(id, blocks))
 
     def __str__(self) -> str:
-        return (f"def ({', '.join(x.name for x in self.params)})\n"
+        return (f"function ({', '.join(x.name for x in self.params)})"
+                f" entry={self.start.name}\n"
                 + '\n\n'.join(str(b) for b in self.blocks()))
