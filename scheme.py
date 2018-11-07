@@ -185,7 +185,7 @@ def make_bool(x: bool) -> SSym:
 
 
 @dataclass
-class SFunction(SExp):
+class SFunction(Value):
     name: SSym
     formals: SList
     body: SList
