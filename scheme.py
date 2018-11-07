@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import (TYPE_CHECKING, Iterator, List, Optional, Sequence, Tuple,
                     Union, cast)
@@ -29,7 +30,9 @@ class SExp:
 
 class Value(SExp):
     """An s-expression that's a valid run-time object."""
-    ...
+    @abstractmethod
+    def type_name(self) -> SSym:
+        ...
 
 
 @dataclass(order=True)
@@ -43,6 +46,9 @@ class SNum(Value):
     def __hash__(self) -> int:
         return hash(self.value)
 
+    def type_name(self) -> SSym:
+        return SSym('number')
+
 
 @dataclass
 class SSym(Value):
@@ -54,6 +60,9 @@ class SSym(Value):
 
     def __hash__(self) -> int:
         return hash(self.name)
+
+    def type_name(self) -> SSym:
+        return SSym('symbol')
 
 
 @dataclass
@@ -74,6 +83,9 @@ class SVect(Value):
 
     def __str__(self) -> str:
         return f"[{' '.join(str(i) for i in self.items)}]"
+
+    def type_name(self) -> SSym:
+        return SSym('vector')
 
 
 @dataclass
@@ -191,6 +203,9 @@ class SFunction(SExp):
     body: SList
     code: Optional[bytecode.Function] = None
     is_lambda: bool = False
+
+    def type_name(self) -> SSym:
+        return SSym('function')
 
 
 @dataclass

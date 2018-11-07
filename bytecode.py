@@ -174,15 +174,7 @@ class TypeofInst(Inst):
 
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
-        value = env[self.value]
-        if isinstance(value, SNum):
-            env[self.dest] = SSym('number')
-        elif isinstance(value, SSym):
-            env[self.dest] = SSym('symbol')
-        elif isinstance(value, SVect):
-            env[self.dest] = SSym('vector')
-        else:
-            raise ValueError(f"Parameter {value} wasn't an expected type.")
+        env[self.dest] = env[self.value].type_name()
 
 
 @dataclass
