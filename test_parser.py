@@ -93,7 +93,7 @@ class ParserTestCase(unittest.TestCase):
         self.assertEqual(
             [
                 SFunction(
-                    SSym('lambda0'),
+                    SSym('__lambda0'),
                     [SSym('spam'), SSym('egg')],
                     scheme.to_slist([
                         SCall(SSym('+'), [SSym('spam'), SSym('egg')])
@@ -101,7 +101,7 @@ class ParserTestCase(unittest.TestCase):
                     is_lambda=True
                 ),
                 SFunction(
-                    SSym('lambda1'),
+                    SSym('__lambda1'),
                     [],
                     scheme.to_slist([SNum(42)]),
                     is_lambda=True
@@ -117,7 +117,7 @@ class ParserTestCase(unittest.TestCase):
             [
                 SCall(
                     SFunction(
-                        SSym('lambda0'),
+                        SSym('__lambda0'),
                         [SSym('spam'), SSym('egg')],
                         scheme.to_slist([
                             SCall(SSym('+'), [SSym('spam'), SSym('egg')])

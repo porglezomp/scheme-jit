@@ -9,7 +9,7 @@ from visitor import Visitor
 class FunctionEmitter(Visitor):
     def __init__(self, global_env: Dict[scheme.SSym, scheme.SExp]) -> None:
         self.global_env = global_env
-        self.functions: List[bytecode.Function] = []
+        # self.functions: List[bytecode.Function] = []
 
     def visit_SFunction(self, func: scheme.SFunction) -> None:
         # super().visit_SFunction(func)
@@ -43,7 +43,8 @@ class FunctionEmitter(Visitor):
         )
 
         func.code = emitted_func
-        self.functions.append(emitted_func)
+        self.global_env[func.name] = func
+        # self.functions.append(emitted_func)
 
 
 class ExpressionEmitter(Visitor):
@@ -64,8 +65,17 @@ class ExpressionEmitter(Visitor):
         self.quoted = quoted
 
     def visit_SFunction(self, func: scheme.SFunction) -> None:
-        # Don't visit nested functions (yet?)
-        pass
+        assert func.is_lambda, 'Encountered nested named function'
+
+        func_emitter = FunctionEmitter(self.global_env)
+        func_emitter.visit(func)
+
+        lambda_var = bytecode.Var(next(self.var_names))
+        lookup_lambda_instr = bytecode.LookupInst(
+            lambda_var, bytecode.SymLit(func.name))
+
+        self.parent_block.add_inst(lookup_lambda_instr)
+        self.result = lambda_var
 
     def visit_SNum(self, num: scheme.SNum) -> None:
         self.result = bytecode.NumLit(num)

@@ -174,12 +174,77 @@ class EmitFunctionDefTestCase(unittest.TestCase):
             )
         )
 
-        self.assertEqual(1, len(self.function_emitter.functions))
-        self.assertEqual(expected, self.function_emitter.functions[0])
+        self.assertEqual(1, len(self.function_emitter.global_env))
+        actual_func = self.function_emitter.global_env[scheme.SSym('func')]
+        assert isinstance(actual_func, scheme.SFunction)
+        self.assertEqual(expected, actual_func.code)
+
+    def test_emit_multiple_function_defs(self) -> None:
+        prog = scheme.parse('(define (func) 42) (define (func2) 43)')
+        self.function_emitter.visit(prog)
+
+        expected_func = bytecode.Function(
+            [],
+            bytecode.BasicBlock(
+                'bb0',
+                [bytecode.ReturnInst(bytecode.NumLit(scheme.SNum(42)))]
+            )
+        )
+
+        expected_func2 = bytecode.Function(
+            [],
+            bytecode.BasicBlock(
+                'bb0',
+                [bytecode.ReturnInst(bytecode.NumLit(scheme.SNum(43)))]
+            )
+        )
+
+        self.assertEqual(2, len(self.function_emitter.global_env))
+
+        actual_func = self.function_emitter.global_env[scheme.SSym('func')]
+        assert isinstance(actual_func, scheme.SFunction)
+        self.assertEqual(expected_func, actual_func.code)
+
+        actual_func2 = self.function_emitter.global_env[scheme.SSym('func2')]
+        assert isinstance(actual_func2, scheme.SFunction)
+        self.assertEqual(expected_func2, actual_func2.code)
 
     def test_emit_lambda_def(self) -> None:
         prog = scheme.parse('(define (func) (lambda (spam) spam))')
-        self.fail()
+        self.function_emitter.visit(prog)
+
+        func_ret_var = bytecode.Var('var0')
+        expected_func = bytecode.Function(
+            [],
+            bytecode.BasicBlock(
+                'bb0',
+                [
+                    bytecode.LookupInst(
+                        func_ret_var, bytecode.SymLit(scheme.SSym('__lambda0'))
+                    ),
+                    bytecode.ReturnInst(func_ret_var)
+                ]
+            )
+        )
+
+        expected_lambda = bytecode.Function(
+            [bytecode.Var('spam')],
+            bytecode.BasicBlock(
+                'bb0',
+                [
+                    bytecode.ReturnInst(bytecode.Var('spam'))
+                ]
+            )
+        )
+
+        actual_func = self.function_emitter.global_env[scheme.SSym('func')]
+        assert isinstance(actual_func, scheme.SFunction)
+        self.assertEqual(expected_func, actual_func.code)
+
+        actual_lambda = (
+            self.function_emitter.global_env[scheme.SSym('__lambda0')])
+        assert isinstance(actual_lambda, scheme.SFunction)
+        self.assertEqual(expected_lambda, actual_lambda.code)
 
     def test_lambda_function_called_immediately(self) -> None:
         prog = scheme.parse('(define (func) ((lambda (spam) spam) 42))')

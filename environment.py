@@ -50,11 +50,11 @@ class EnvAssigner(Visitor):
     {
         egg: Nil
     }
-    SCall(func=SFunction(name=SSym(name='lambda0'),...), args=[SNum(value=42)])
+    SCall(func=SFunction(name=SSym(name='__lambda0'),...), args=[SNum(value=42)])
     {
         egg: Nil
     }
-    SFunction(name=SSym(name='lambda0'),... is_lambda=True)
+    SFunction(name=SSym(name='__lambda0'),... is_lambda=True)
     {
         sausage: Nil
     }

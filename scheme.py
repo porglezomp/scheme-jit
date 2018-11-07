@@ -394,5 +394,5 @@ def parse(x: str) -> List[SExp]:
 def lambda_name_generator() -> Iterator[str]:
     n = 0
     while True:
-        yield f'lambda{n}'
+        yield f'__lambda{n}'
         n += 1
