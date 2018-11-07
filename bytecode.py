@@ -3,7 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Counter, Dict, Generator, List, Optional
+from typing import (Counter, Dict, Generator, Iterable, Iterator, List,
+                    Optional, Set)
 
 import scheme
 from environment import Environment
@@ -22,9 +23,15 @@ class Inst(ABC):
     def run(self, env: EvalEnv) -> Optional[BB]:
         ...
 
+    def successors(self) -> Iterable[BB]:
+        return []
+
 
 class BB(ABC):
     name: str
+
+    def successors(self) -> Iterable[BB]:
+        return []
 
 
 @dataclass(frozen=True)
@@ -301,6 +308,9 @@ class JmpInst(Inst):
         env.stats[type(self)] += 1
         return self.target
 
+    def successors(self) -> Iterable[BB]:
+        return [self.target]
+
 
 @dataclass
 class BrInst(Inst):
@@ -318,6 +328,9 @@ class BrInst(Inst):
             return self.target
         return None
 
+    def successors(self) -> Iterable[BB]:
+        return [self.target]
+
 
 @dataclass
 class BrnInst(Inst):
@@ -334,6 +347,9 @@ class BrnInst(Inst):
         if res == SSym('false'):
             return self.target
         return None
+
+    def successors(self) -> Iterable[BB]:
+        return [self.target]
 
 
 @dataclass
@@ -357,6 +373,11 @@ class BasicBlock(BB):
     name: str
     instructions: List[Inst] = field(default_factory=list)
 
+    def __str__(self) -> str:
+        return f"{self.name}:\n" + "\n".join(
+            "  " + str(i) for i in self.instructions
+        )
+
     def add_inst(self, inst: Inst) -> None:
         self.instructions.append(inst)
 
@@ -371,6 +392,10 @@ class BasicBlock(BB):
                 break
         assert next_bb
         return next_bb
+
+    def successors(self) -> Iterator[BB]:
+        for inst in self.instructions:
+            yield from inst.successors()
 
 
 @dataclass
@@ -394,3 +419,22 @@ class Function:
                 return env[block.ret]
             else:
                 raise NotImplementedError(f"Unexpected BB type: {type(block)}")
+
+    def blocks(self) -> Iterator[BB]:
+        """
+        Iterate over the basic blocks in some order.
+
+        Ideally this would be the preorder traversal of the dom-tree.
+        """
+        visited: Set[int] = set()
+        blocks = [self.start]
+        while blocks:
+            block = blocks.pop()
+            yield block
+            blocks.extend(b for b in block.successors()
+                          if id(b) not in visited)
+            visited |= set(map(id, blocks))
+
+    def __str__(self) -> str:
+        return (f"def ({', '.join(x.name for x in self.params)})\n"
+                + '\n\n'.join(str(b) for b in self.blocks()))
