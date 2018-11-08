@@ -9,11 +9,8 @@ from visitor import Visitor
 class FunctionEmitter(Visitor):
     def __init__(self, global_env: Dict[scheme.SSym, scheme.SExp]) -> None:
         self.global_env = global_env
-        # self.functions: List[bytecode.Function] = []
 
     def visit_SFunction(self, func: scheme.SFunction) -> None:
-        # super().visit_SFunction(func)
-
         local_env: Dict[scheme.SSym, bytecode.Var] = {}
         for param in func.params:
             local_env[param] = bytecode.Var(param.name)
@@ -22,6 +19,8 @@ class FunctionEmitter(Visitor):
         var_names = name_generator('var')
 
         body_exprs = list(func.body)
+
+        assert len(body_exprs) > 0, 'Function bodies must not be empty'
 
         start_block = bytecode.BasicBlock(next(bb_names))
         emitter = ExpressionEmitter(
@@ -44,7 +43,6 @@ class FunctionEmitter(Visitor):
 
         func.code = emitted_func
         self.global_env[func.name] = func
-        # self.functions.append(emitted_func)
 
 
 class ExpressionEmitter(Visitor):
@@ -65,7 +63,8 @@ class ExpressionEmitter(Visitor):
         self.quoted = quoted
 
     def visit_SFunction(self, func: scheme.SFunction) -> None:
-        assert func.is_lambda, 'Encountered nested named function'
+        assert func.is_lambda, 'Nested named functions not supported'
+        assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
         func_emitter = FunctionEmitter(self.global_env)
         func_emitter.visit(func)
@@ -78,6 +77,8 @@ class ExpressionEmitter(Visitor):
         self.result = lambda_var
 
     def visit_SConditional(self, conditional: scheme.SConditional) -> None:
+        assert not self.quoted, 'Non-primitives in quoted list unsupported'
+
         test_emitter = ExpressionEmitter(
             self.parent_block, self.bb_names, self.var_names,
             self.local_env, self.global_env)
@@ -189,6 +190,8 @@ class ExpressionEmitter(Visitor):
         self.result = cdr
 
     def visit_SCall(self, call: scheme.SCall) -> None:
+        assert not self.quoted, 'Non-primitives in quoted list unsupported'
+
         func_expr_emitter = ExpressionEmitter(
             self.parent_block, self.bb_names, self.var_names,
             self.local_env, self.global_env)
@@ -203,6 +206,7 @@ class ExpressionEmitter(Visitor):
             )
             arg_emitter.visit(arg)
             args.append(arg_emitter.result)
+            self.end_block = arg_emitter.end_block
 
         call_result_var = bytecode.Var(next(self.var_names))
         call_instr = bytecode.CallInst(
@@ -214,20 +218,6 @@ class ExpressionEmitter(Visitor):
             arg_emitter.end_block.add_inst(call_instr)
 
         self.result = call_result_var
-
-    # def visit_SExp(self, expr: scheme.SExp) -> None:
-    #     super().visit_SExp(expr)
-    #     if expr == return_expr:
-    #         if isinstance(final_instr, bytecode.Parameter):
-
-    # def visit_SConditional(self, conditional: scheme.SConditional) -> None:
-    #     then_block = bytecode.BasicBlock(next(self.bb_names), [])
-    #     then_visitor = ExpressionEmitter(then_block, bb_names)
-    #     then_visitor.visit(conditional.then_expr)
-
-    #     self.parent_block.add_inst(bytecode.BrInst(, then_block))
-
-    #     super().visit_SExp()
 
 
 def name_generator(prefix: str) -> Iterator[str]:

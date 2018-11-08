@@ -338,10 +338,128 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.assertEqual(outer_result_var, self.expr_emitter.result)
 
     def test_conditional_in_conditional_test_expr(self) -> None:
-        self.fail()
+        prog = scheme.parse('(if (if true false true) 42 43)')
+        self.expr_emitter.visit(prog)
+
+        end_block = bytecode.BasicBlock('bb6')
+
+        body_result = bytecode.Var('var1')
+
+        body_then_block = bytecode.BasicBlock(
+            'bb4',
+            [
+                bytecode.CopyInst(
+                    body_result, bytecode.NumLit(scheme.SNum(42))
+                ),
+                bytecode.JmpInst(end_block)
+            ]
+        )
+
+        body_else_block = bytecode.BasicBlock(
+            'bb5',
+            [
+                bytecode.CopyInst(
+                    body_result, bytecode.NumLit(scheme.SNum(43))
+                ),
+                bytecode.JmpInst(end_block)
+            ]
+        )
+
+        condition_result = bytecode.Var('var0')
+        condition_end_block = bytecode.BasicBlock(
+            'bb3',
+            [
+                bytecode.BrInst(condition_result, body_then_block),
+                bytecode.JmpInst(body_else_block)
+            ]
+        )
+
+        condition_then_block = bytecode.BasicBlock(
+            'bb1',
+            [
+                bytecode.CopyInst(
+                    condition_result, bytecode.BoolLit(scheme.SBool(False))
+                ),
+                bytecode.JmpInst(condition_end_block)
+            ]
+        )
+
+        condition_else_block = bytecode.BasicBlock(
+            'bb2',
+            [
+                bytecode.CopyInst(
+                    condition_result, bytecode.BoolLit(scheme.SBool(True))
+                ),
+                bytecode.JmpInst(condition_end_block)
+            ]
+        )
+
+        entry_block = bytecode.BasicBlock(
+            'bb0',
+            [
+                bytecode.BrInst(
+                    bytecode.BoolLit(scheme.SBool(True)), condition_then_block
+                ),
+                bytecode.JmpInst(condition_else_block)
+            ]
+        )
+
+        self.assertEqual(entry_block, self.expr_emitter.parent_block)
+        self.assertEqual(end_block, self.expr_emitter.end_block)
+
+        self.assertEqual(body_result, self.expr_emitter.result)
 
     def test_conditional_in_function_call(self) -> None:
-        self.fail()
+        prog = scheme.parse('(number? (if true 42 false))')
+        self.expr_emitter.global_env[scheme.SSym('number?')] = scheme.Nil
+        self.expr_emitter.visit(prog)
+
+        end_block = bytecode.BasicBlock('bb3')
+        conditional_result = bytecode.Var('var1')
+
+        then_block = bytecode.BasicBlock(
+            'bb1',
+            [
+                bytecode.CopyInst(
+                    conditional_result, bytecode.NumLit(scheme.SNum(42))
+                ),
+                bytecode.JmpInst(end_block)
+            ]
+        )
+
+        else_block = bytecode.BasicBlock(
+            'bb2',
+            [
+                bytecode.CopyInst(
+                    conditional_result, bytecode.BoolLit(scheme.SBool(False))
+                ),
+                bytecode.JmpInst(end_block)
+            ]
+        )
+
+        func_var = bytecode.Var('var0')
+        entry_block = bytecode.BasicBlock(
+            'bb0',
+            [
+                bytecode.LookupInst(
+                    func_var, bytecode.SymLit(scheme.SSym('number?'))
+                ),
+                bytecode.BrInst(
+                    bytecode.BoolLit(scheme.SBool(True)), then_block
+                ),
+                bytecode.JmpInst(else_block)
+            ]
+        )
+
+        call_result = bytecode.Var('var2')
+        end_block.add_inst(
+            bytecode.CallInst(call_result, func_var, [conditional_result])
+        )
+
+        self.assertEqual(entry_block, self.expr_emitter.parent_block)
+        self.assertEqual(end_block, self.expr_emitter.end_block)
+
+        self.assertEqual(call_result, self.expr_emitter.result)
 
 
 class EmitFunctionDefTestCase(unittest.TestCase):
