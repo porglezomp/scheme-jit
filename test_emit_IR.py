@@ -552,11 +552,3 @@ class EmitFunctionDefTestCase(unittest.TestCase):
             self.function_emitter.global_env[scheme.SSym('__lambda0')])
         assert isinstance(actual_lambda, scheme.SFunction)
         self.assertEqual(expected_lambda, actual_lambda.code)
-
-
-class EmitBuiltinsTestCase(unittest.TestCase):
-    pass
-
-
-class TailRecursionConversionTestCase(unittest.TestCase):
-    pass
