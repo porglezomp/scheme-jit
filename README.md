@@ -20,22 +20,30 @@ We want some monomorphization or something to get into an interesting JIT optimi
 
 ## Special Forms
 
-- `define`
-- `if`
-- `quote`
+- `(define (f x ...) body ...)`
+- `(if p t f)`
+- `(quote x)`
 
 ## Builtin functions
 
-- `vnth`
-- `vlen`
-- `number?`
-- `symbol?`
-- `vector?`
-- `number=`
-- `symbol=`
-- `number<`
+- `(typeof x)`
+- `(vector-make n x)`
+- `(vector-index v n)`
+- `(vector-set! v n x)`
+- `(vector-length v)`
+- `(pointer= a b)`
+- `(number= a b)`
+- `(symbol= a b)`
+- `(symbol< a b)`
 
 And arithmetic operators
+
+## Prelude
+
+- `=`, `!=`, `<`, `>`, `<=`, `>=`
+- `not`
+- `number?`, `symbol?`, `vector?`, `function?`, `pair?`, `nil?`
+- `cons`, `car`, `cdr`
 
 ## Bytecode design
 
