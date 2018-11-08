@@ -1,15 +1,11 @@
 # Bytecode
-A function is a list of basic blocks, and entry block, and an exit block
-Each basic block has a terminator instruction which says which next block to branch to
-The final block is just the return instruction
+A function is a control flow graph that begins at an entry block.
+The blocks are extended basic blocks, which can have multiple exit points, but will always be entered at the top.
+Every block must be terminated by a `jmp`, `return`, or `trap` instruction, there is no fallthrough.
 
 Inspired by LLVM IR
 
 # Instructions
-
-## Literals
-- `num`
-- `sym`
 
 ## Arithmetic
 - `add`
@@ -27,18 +23,27 @@ Inspired by LLVM IR
 ## Type extraction
 - `typeof`
 
+## Copy
+- `copy`
+
 ## Memory
 - `alloc`
 - `load`
 - `store <to> = <from>`
+- `lookup`
+- `length`
 
 ## Branching
 - `jmp block`
-- `br value block_t block_f`
+- `br value block`
+- `brn value block`
 
 ## Call
-- `calli value (args)`
-- (later? `call name (args)`)
+- `call value (args)`
+- `return`
+
+## Error
+- `trap`
 
 ## Sample code
 ### Recursive version of (list?)
