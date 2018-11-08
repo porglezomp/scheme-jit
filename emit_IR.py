@@ -2,7 +2,6 @@ from typing import Dict, Iterator, List, Optional
 
 import bytecode
 import scheme
-from environment import Environment
 from visitor import Visitor
 
 
@@ -230,6 +229,6 @@ def name_generator(prefix: str) -> Iterator[str]:
 class EnvBindingNotFound(Exception):
     """
     An exception that indicates that a requested symbol does not
-    exist in an Environment.
+    exist in an environment.
     """
     pass

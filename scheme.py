@@ -7,25 +7,10 @@ from typing import (TYPE_CHECKING, Iterator, List, Optional, Sequence, Tuple,
 
 import bytecode
 
-if TYPE_CHECKING:
-    from environment import Environment
-
 
 class SExp:
     """An s-expression base class"""
-    def __init__(self) -> None:
-        self._environment: Optional[Environment] = None
-
-    @property
-    def environment(self) -> Environment:
-        if self._environment is None:
-            raise Exception('Environment not set')
-
-        return self._environment
-
-    @environment.setter
-    def environment(self, env: Environment) -> None:
-        self._environment = env
+    ...
 
 
 class Value(SExp):
@@ -39,7 +24,7 @@ class Value(SExp):
         ...
 
 
-@dataclass(order=True)
+@dataclass(frozen=True, order=True)
 class SNum(Value):
     """A lisp number"""
     value: int
@@ -57,7 +42,7 @@ class SNum(Value):
         return self.value
 
 
-@dataclass
+@dataclass(frozen=True)
 class SBool(Value):
     """A lisp boolean"""
     value: bool
@@ -69,7 +54,7 @@ class SBool(Value):
         return SSym('bool')
 
 
-@dataclass
+@dataclass(frozen=True)
 class SSym(Value):
     """A lisp symbol"""
     name: str
@@ -87,7 +72,7 @@ class SSym(Value):
         raise Exception("Should not take the address of a symbol")
 
 
-@dataclass
+@dataclass(frozen=True)
 class SVect(Value):
     """An n element vector
 
@@ -113,7 +98,7 @@ class SVect(Value):
         return id(self.items)
 
 
-@dataclass
+@dataclass(frozen=True)
 class SPair(SExp):
     """A scheme pair.
 
@@ -157,7 +142,7 @@ class SPair(SExp):
         return f"({str(self.first)} . {str(self.second)})"
 
 
-@dataclass
+@dataclass(frozen=True)
 class Quote(SExp):
     """A quoted list"""
     slist: SList
@@ -245,13 +230,13 @@ class SFunction(Value):
         return id(self.code)
 
 
-@dataclass
+@dataclass(frozen=True)
 class SCall(SExp):
     func: Union[SSym, SFunction]
     args: List[SExp]
 
 
-@dataclass
+@dataclass(frozen=True)
 class SConditional(SExp):
     test: SExp
     then_expr: SExp

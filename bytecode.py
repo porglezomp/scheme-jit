@@ -7,9 +7,8 @@ from typing import (Counter, Dict, Generator, Iterable, Iterator, List,
                     Optional, Set)
 
 import scheme
-from environment import Environment
 from errors import Trap
-from scheme import SBool, SNum, SSym, SVect, Value
+from scheme import SBool, SExp, SNum, SSym, SVect, Value
 
 
 class Parameter(ABC):
@@ -80,18 +79,18 @@ class BoolLit(Parameter):
 
 class EvalEnv:
     _local_env: Dict[Var, Value]
-    _global_env: Environment
+    _global_env: Dict[SSym, SExp]
     stats: Counter[type]
 
     def __init__(self,
                  local_env: Optional[Dict[Var, Value]] = None,
-                 global_env: Optional[Environment] = None):
+                 global_env: Optional[Dict[SSym, SExp]] = None):
         if local_env is None:
             self._local_env = {}
         else:
             self._local_env = local_env
         if global_env is None:
-            self._global_env = Environment(None)
+            self._global_env = {}
         else:
             self._global_env = global_env
         self.stats = Counter()
