@@ -53,7 +53,7 @@ class Visitor:
             self.visit(pair.second)
 
     def visit_Quote(self, quote: Quote) -> None:
-        self.visit(quote.slist)
+        self.visit(quote.expr)
 
     def visit_SFunction(self, func: SFunction) -> None:
         if not func.is_lambda:

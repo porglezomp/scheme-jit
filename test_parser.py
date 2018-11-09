@@ -36,8 +36,8 @@ class ParserTestCase(unittest.TestCase):
     def test_parse_list(self) -> None:
         self.assertEqual(scheme.parse("()"), [Nil])
         self.assertEqual(
-            scheme.parse("(1 2 3)"),
-            [scheme.to_slist([SNum(1), SNum(2), SNum(3)])],
+            scheme.parse("(func 2 3)"),
+            [SCall(SSym('func'), [SNum(2), SNum(3)])],
         )
 
     def test_vector(self) -> None:
@@ -48,14 +48,22 @@ class ParserTestCase(unittest.TestCase):
         )
 
     def test_quote(self) -> None:
-        self.assertEqual(Quote(Nil), scheme.parse("'()")[0])
-        self.assertEqual(Quote(Nil), scheme.parse("(quote ())")[0])
+        self.assertEqual([Quote(SSym('spam'))], scheme.parse("'spam"))
 
-        self.assertEqual(Quote(scheme.to_slist([SNum(1), SNum(2), SNum(3)])),
-                         scheme.parse("'(1 2 3)")[0])
+        self.assertEqual([Quote(Nil)], scheme.parse("'()"))
+        self.assertEqual([Quote(Nil)], scheme.parse("(quote ())"))
 
-        self.assertEqual(Quote(scheme.to_slist([SNum(1), SNum(2), SNum(3)])),
-                         scheme.parse("(quote (1 2 3))")[0])
+        self.assertEqual([
+                Quote(
+                    scheme.to_slist(
+                        [SSym('if'), SBool(True), SNum(2), SNum(3)]
+                    )
+                )
+            ],
+            scheme.parse("'(if true 2 3)"))
+
+        self.assertEqual([Quote(scheme.to_slist([SNum(1), SNum(2), SNum(3)]))],
+                         scheme.parse("(quote (1 2 3))"))
 
         self.assertEqual(
             scheme.parse("'(1 2 3)"), scheme.parse("(quote (1 2 3))"))

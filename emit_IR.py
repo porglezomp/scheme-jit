@@ -1,4 +1,4 @@
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, cast
 
 import bytecode
 import scheme
@@ -156,7 +156,15 @@ class ExpressionEmitter(Visitor):
             parent_block.add_inst(store)
 
     def visit_Quote(self, quote: scheme.Quote) -> None:
-        quoted_exprs = list(quote.slist)
+        if isinstance(quote.expr, scheme.SSym):
+            self.quoted = True
+            super().visit(quote.expr)
+            return
+
+        is_list = isinstance(quote.expr, scheme.SPair) and quote.expr.is_list
+        assert quote.expr is scheme.Nil or is_list
+
+        quoted_exprs = list(cast(scheme.SList, quote.expr))
         nil_var = bytecode.Var(next(self.var_names))
         nil_alloc = bytecode.AllocInst(
             nil_var, bytecode.NumLit(scheme.SNum(0)))
@@ -198,9 +206,10 @@ class ExpressionEmitter(Visitor):
 
         args: List[bytecode.Parameter] = []
         arg_emitter: Optional[ExpressionEmitter] = None
+        self.end_block = func_expr_emitter.end_block
         for arg in call.args:
             arg_emitter = ExpressionEmitter(
-                func_expr_emitter.end_block, self.bb_names, self.var_names,
+                self.end_block, self.bb_names, self.var_names,
                 self.local_env, self.global_env
             )
             arg_emitter.visit(arg)

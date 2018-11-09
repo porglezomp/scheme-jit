@@ -23,8 +23,7 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.NumLit(scheme.SNum(42)), self.expr_emitter.result)
 
     def test_emit_quoted_symbol_literal(self) -> None:
-        prog = scheme.parse('spam')
-        self.expr_emitter.quoted = True
+        prog = scheme.parse("'spam")
         self.expr_emitter.visit(prog)
 
         self.assertEqual(
@@ -409,7 +408,7 @@ class EmitExpressionTestCase(unittest.TestCase):
 
         self.assertEqual(body_result, self.expr_emitter.result)
 
-    def test_conditional_in_function_call(self) -> None:
+    def test_conditional_in_function_call_args(self) -> None:
         prog = scheme.parse('(number? (if true 42 false))')
         self.expr_emitter.global_env[scheme.SSym('number?')] = scheme.Nil
         self.expr_emitter.visit(prog)
@@ -454,6 +453,57 @@ class EmitExpressionTestCase(unittest.TestCase):
         call_result = bytecode.Var('var2')
         end_block.add_inst(
             bytecode.CallInst(call_result, func_var, [conditional_result])
+        )
+
+        self.assertEqual(entry_block, self.expr_emitter.parent_block)
+        self.assertEqual(end_block, self.expr_emitter.end_block)
+
+        self.assertEqual(call_result, self.expr_emitter.result)
+
+    def test_conditional_in_function_call_func(self) -> None:
+        prog = scheme.parse('((if true func1 func2))')
+        self.expr_emitter.local_env[scheme.SSym('func1')] = (
+            bytecode.Var('spam'))
+        self.expr_emitter.local_env[scheme.SSym('func2')] = (
+            bytecode.Var('egg'))
+        self.expr_emitter.visit(prog)
+
+        end_block = bytecode.BasicBlock('bb3')
+        conditional_result = bytecode.Var('var0')
+
+        then_block = bytecode.BasicBlock(
+            'bb1',
+            [
+                bytecode.CopyInst(
+                    conditional_result, bytecode.Var('spam')
+                ),
+                bytecode.JmpInst(end_block)
+            ]
+        )
+
+        else_block = bytecode.BasicBlock(
+            'bb2',
+            [
+                bytecode.CopyInst(
+                    conditional_result, bytecode.Var('egg')
+                ),
+                bytecode.JmpInst(end_block)
+            ]
+        )
+
+        entry_block = bytecode.BasicBlock(
+            'bb0',
+            [
+                bytecode.BrInst(
+                    bytecode.BoolLit(scheme.SBool(True)), then_block
+                ),
+                bytecode.JmpInst(else_block)
+            ]
+        )
+
+        call_result = bytecode.Var('var1')
+        end_block.add_inst(
+            bytecode.CallInst(call_result, conditional_result, [])
         )
 
         self.assertEqual(entry_block, self.expr_emitter.parent_block)

@@ -144,11 +144,11 @@ class SPair(SExp):
 
 @dataclass(frozen=True)
 class Quote(SExp):
-    """A quoted list"""
-    slist: SList
+    """A quoted expression"""
+    expr: SExp
 
     def __str__(self) -> str:
-        return f"'{str(self.slist)}"
+        return f"'{str(self.expr)}"
 
 
 class PairIterator:
@@ -232,7 +232,7 @@ class SFunction(Value):
 
 @dataclass(frozen=True)
 class SCall(SExp):
-    func: Union[SSym, SFunction]
+    func: SExp
     args: List[SExp]
 
 
@@ -256,7 +256,8 @@ def parse(x: str) -> List[SExp]:
 
     lambda_names = lambda_name_generator()
 
-    def parse(tokens: List[str]) -> Tuple[SExp, List[str]]:
+    def parse(tokens: List[str],
+              quoted: bool = False) -> Tuple[SExp, List[str]]:
         if not tokens:
             raise Exception("Parse Error")
         elif tokens[0] == "'":
@@ -274,6 +275,10 @@ def parse(x: str) -> List[SExp]:
             if tokens[0] == ')':
                 return Nil, tokens[1:]
 
+            if quoted:
+                list_tail, tokens = read_list_tail(tokens)
+                return to_slist(list_tail), tokens[1:]
+
             parsed_first, tokens = parse(tokens)
             if parsed_first == SSym('if'):
                 return parse_conditional(tokens)
@@ -288,17 +293,7 @@ def parse(x: str) -> List[SExp]:
                 quote, tokens = parse_quote(tokens)
                 return quote, tokens[1:]
 
-            if isinstance(parsed_first, SFunction):
-                assert parsed_first.is_lambda
-                return parse_call(parsed_first, tokens)
-
-            if isinstance(parsed_first, SSym):
-                return parse_call(parsed_first, tokens)
-
-            items, tokens = read_list_tail(tokens)
-
-            return to_slist([parsed_first] + items), tokens[1:]
-
+            return parse_call(parsed_first, tokens)
         elif tokens[0].isdigit():
             return SNum(int(tokens[0])), tokens[1:]
         elif tokens[0] in ('true', 'false'):
@@ -351,17 +346,14 @@ def parse(x: str) -> List[SExp]:
 
         return formals, tokens[1:]
 
-    def parse_call(func: Union[SSym, SFunction],
+    def parse_call(func: SExp,
                    tokens: List[str]) -> Tuple[SExp, List[str]]:
         args, tokens = read_list_tail(tokens)
         return SCall(func, args), tokens[1:]
 
     def parse_quote(tokens: List[str]) -> Tuple[SExp, List[str]]:
-        assert tokens[0] == '(', 'Expected list'
-        tokens = tokens[1:]
-
-        list_tail, tokens = read_list_tail(tokens)
-        return Quote(to_slist(list_tail)), tokens[1:]
+        quoted, tokens = parse(tokens, quoted=True)
+        return Quote(quoted), tokens
 
     def read_list_tail(tokens: List[str]) -> Tuple[List[SExp], List[str]]:
         items = []

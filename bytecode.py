@@ -79,12 +79,12 @@ class BoolLit(Parameter):
 
 class EvalEnv:
     _local_env: Dict[Var, Value]
-    _global_env: Dict[SSym, SExp]
+    _global_env: Dict[SSym, Value]
     stats: Counter[type]
 
     def __init__(self,
                  local_env: Optional[Dict[Var, Value]] = None,
-                 global_env: Optional[Dict[SSym, SExp]] = None):
+                 global_env: Optional[Dict[SSym, Value]] = None):
         if local_env is None:
             self._local_env = {}
         else:

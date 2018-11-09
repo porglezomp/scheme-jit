@@ -26,26 +26,6 @@ class VisitorTestCase(unittest.TestCase):
         counter.visit(prog)
         self.assertEqual(len(expected), counter.num_exprs)
 
-    def test_visit_pair(self) -> None:
-        prog = scheme.parse('(1 spam true)')
-        recorder = TraversalRecorder()
-        recorder.visit(prog)
-
-        expected = [
-            'SPair',
-            'SNum',
-            'SPair',
-            'SSym',
-            'SPair',
-            'SBool',
-        ]
-
-        self.assertEqual(expected, recorder.exprs)
-
-        counter = ExpressionCounter()
-        counter.visit(prog)
-        self.assertEqual(len(expected), counter.num_exprs)
-
     def test_visit_quote(self) -> None:
         prog = scheme.parse('(quote (1 spam true))')
         recorder = TraversalRecorder()
