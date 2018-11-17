@@ -120,4 +120,54 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
 def add_prelude(env: Dict[SSym, Value]) -> None:
     """Add intrinsics to the environment."""
     add_builtins(env)  # @TODO: Don't do this, for greater flexibility?
-    raise NotImplementedError("Prelude")
+    code = scheme.parse("""
+    (define (vector=/recur x y n end)
+      (if (= n end)
+        true
+        (if (= (vector-index x n) (vector-index y n))
+          (vector=/recur x y (+ n 1) end)
+          false)))
+    (define (vector= x y)
+      (if (pointer= x y)
+        true
+        (if (= (vector-length x) (vector-length y))
+            (vector=/recur x y 0 (vector-length x))
+            false)))
+
+    (define (= x y)
+      (if (symbol= (typeof x) (typeof y))
+        (if (symbol= (typeof x) 'symbol)
+          (symbol= x y)
+          (if (symbol= (typeof x) 'number)
+            (number= x y)
+            (if (symbol= (typeof x) 'vector)
+              (vector= x y)
+              (pointer= x y))))
+        false))
+
+    (define (< x y) (number< x y))
+
+    (define (not b) (if b false true))
+    (define (!= x y) (not (= x y)))
+    (define (> x y) (< y x))
+    (define (<= x y) (if (= x y) true (< x y)))
+    (define (>= x y) (if (= x y) true (> x y)))
+
+    (define (number? x) (= (typeof x) 'number))
+    (define (symbol? x) (= (typeof x) 'symbol))
+    (define (vector? x) (= (typeof x) 'vector))
+    (define (function? x) (= (typeof x) 'function))
+    (define (bool? x) (= (typeof x) 'bool))
+    (define (pair? x)
+      (if (vector? x)
+        (= (vector-length x) 2)
+        false))
+    (define (nil? x) (= x []))
+
+    (define (cons x l) [x l])
+    (define (car l) (vector-index l 0))
+    (define (cdr l) (vector-index l 1))
+    """)
+    emitter = FunctionEmitter(env)
+    for definition in code:
+        emitter.visit(definition)
