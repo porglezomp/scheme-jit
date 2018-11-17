@@ -7,7 +7,7 @@ from visitor import Visitor
 
 
 class FunctionEmitter(Visitor):
-    def __init__(self, global_env: Dict[scheme.SSym, scheme.SExp]) -> None:
+    def __init__(self, global_env: Dict[scheme.SSym, scheme.Value]) -> None:
         self.global_env = global_env
 
     def visit_SFunction(self, func: scheme.SFunction) -> None:
@@ -52,7 +52,7 @@ class ExpressionEmitter(Visitor):
                  bb_names: Iterator[str],
                  var_names: Iterator[str],
                  local_env: Dict[scheme.SSym, bytecode.Var],
-                 global_env: Dict[scheme.SSym, scheme.SExp],
+                 global_env: Dict[scheme.SSym, scheme.Value],
                  quoted: bool = False) -> None:
         self.parent_block = parent_block
         self.end_block = parent_block
@@ -129,13 +129,11 @@ class ExpressionEmitter(Visitor):
             self.result = bytecode.SymLit(sym)
         elif sym in self.local_env:
             self.result = self.local_env[sym]
-        elif sym in self.global_env:
+        else:
             dest_var = bytecode.Var(next(self.var_names))
             lookup_instr = bytecode.LookupInst(dest_var, bytecode.SymLit(sym))
             self.parent_block.add_inst(lookup_instr)
             self.result = dest_var
-        else:
-            raise EnvBindingNotFound(f'Name not found: "{sym.name}"')
 
     def visit_SVect(self, vect: scheme.SVect) -> None:
         var = bytecode.Var(next(self.var_names))
