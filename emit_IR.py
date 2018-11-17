@@ -2,6 +2,7 @@ from typing import Dict, Iterator, List, Optional, cast
 
 import bytecode
 import scheme
+from errors import EnvBindingNotFound
 from visitor import Visitor
 
 
@@ -233,11 +234,3 @@ def name_generator(prefix: str) -> Iterator[str]:
     while True:
         yield f'{prefix}{count}'
         count += 1
-
-
-class EnvBindingNotFound(Exception):
-    """
-    An exception that indicates that a requested symbol does not
-    exist in an environment.
-    """
-    pass
