@@ -53,6 +53,9 @@ class SBool(Value):
     def type_name(self) -> SSym:
         return SSym('bool')
 
+    def address(self) -> int:
+        raise Exception("Should not take the address of a boolean")
+
 
 @dataclass(frozen=True)
 class SSym(Value):
