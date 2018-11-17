@@ -34,6 +34,10 @@ class Value(SExp):
     def type_name(self) -> SSym:
         ...
 
+    @abstractmethod
+    def address(self) -> int:
+        ...
+
 
 @dataclass(order=True)
 class SNum(Value):
@@ -49,6 +53,9 @@ class SNum(Value):
     def type_name(self) -> SSym:
         return SSym('number')
 
+    def address(self) -> int:
+        return self.value
+
 
 @dataclass
 class SSym(Value):
@@ -63,6 +70,9 @@ class SSym(Value):
 
     def type_name(self) -> SSym:
         return SSym('symbol')
+
+    def address(self) -> int:
+        raise Exception("Should not take the address of a symbol")
 
 
 @dataclass
@@ -86,6 +96,9 @@ class SVect(Value):
 
     def type_name(self) -> SSym:
         return SSym('vector')
+
+    def address(self) -> int:
+        return id(self.items)
 
 
 @dataclass
@@ -206,6 +219,9 @@ class SFunction(Value):
 
     def type_name(self) -> SSym:
         return SSym('function')
+
+    def address(self) -> int:
+        return id(self.code)
 
 
 @dataclass
