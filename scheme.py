@@ -7,25 +7,10 @@ from typing import (TYPE_CHECKING, Iterator, List, Optional, Sequence, Tuple,
 
 import bytecode
 
-if TYPE_CHECKING:
-    from environment import Environment
-
 
 class SExp:
     """An s-expression base class"""
-    def __init__(self) -> None:
-        self._environment: Optional[Environment] = None
-
-    @property
-    def environment(self) -> Environment:
-        if self._environment is None:
-            raise Exception('Environment not set')
-
-        return self._environment
-
-    @environment.setter
-    def environment(self, env: Environment) -> None:
-        self._environment = env
+    ...
 
 
 class Value(SExp):
@@ -39,7 +24,7 @@ class Value(SExp):
         ...
 
 
-@dataclass(order=True)
+@dataclass(frozen=True, order=True)
 class SNum(Value):
     """A lisp number"""
     value: int
@@ -57,7 +42,22 @@ class SNum(Value):
         return self.value
 
 
-@dataclass
+@dataclass(frozen=True)
+class SBool(Value):
+    """A lisp boolean"""
+    value: bool
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def type_name(self) -> SSym:
+        return SSym('bool')
+
+    def address(self) -> int:
+        raise Exception("Should not take the address of a boolean")
+
+
+@dataclass(frozen=True)
 class SSym(Value):
     """A lisp symbol"""
     name: str
@@ -75,7 +75,7 @@ class SSym(Value):
         raise Exception("Should not take the address of a symbol")
 
 
-@dataclass
+@dataclass(frozen=True)
 class SVect(Value):
     """An n element vector
 
@@ -101,7 +101,7 @@ class SVect(Value):
         return id(self.items)
 
 
-@dataclass
+@dataclass(frozen=True)
 class SPair(SExp):
     """A scheme pair.
 
@@ -143,6 +143,15 @@ class SPair(SExp):
             return f"({' '.join((str(item) for item in self))})"
 
         return f"({str(self.first)} . {str(self.second)})"
+
+
+@dataclass(frozen=True)
+class Quote(SExp):
+    """A quoted expression"""
+    expr: SExp
+
+    def __str__(self) -> str:
+        return f"'{str(self.expr)}"
 
 
 class PairIterator:
@@ -212,7 +221,7 @@ def make_bool(x: bool) -> SSym:
 @dataclass
 class SFunction(Value):
     name: SSym
-    formals: SList
+    params: List[SSym]
     body: SList
     code: Optional[bytecode.Function] = None
     is_lambda: bool = False
@@ -224,7 +233,13 @@ class SFunction(Value):
         return id(self.code)
 
 
-@dataclass
+@dataclass(frozen=True)
+class SCall(SExp):
+    func: SExp
+    args: List[SExp]
+
+
+@dataclass(frozen=True)
 class SConditional(SExp):
     test: SExp
     then_expr: SExp
@@ -244,12 +259,12 @@ def parse(x: str) -> List[SExp]:
 
     lambda_names = lambda_name_generator()
 
-    def parse(tokens: List[str]) -> Tuple[SExp, List[str]]:
+    def parse(tokens: List[str],
+              quoted: bool = False) -> Tuple[SExp, List[str]]:
         if not tokens:
             raise Exception("Parse Error")
         elif tokens[0] == "'":
-            item, tokens = parse(tokens[1:])
-            return to_slist([SSym("quote"), item]), tokens
+            return parse_quote(tokens[1:])
         elif tokens[0] == '[':
             vector = []
             tokens = tokens[1:]
@@ -258,58 +273,99 @@ def parse(x: str) -> List[SExp]:
                 vector.append(item)
             return SVect(vector), tokens[1:]
         elif tokens[0] == '(':
-            items = []
             tokens = tokens[1:]
-            while tokens[0] != ')':
-                item, tokens = parse(tokens)
-                items.append(item)
 
-            if len(items) == 0:
-                return to_slist(items), tokens[1:]
+            if tokens[0] == ')':
+                return Nil, tokens[1:]
 
-            if items[0] == SSym('if'):
-                assert len(items) == 4, 'Missing parts of conditional'
-                return SConditional(
-                    items[1],
-                    items[2],
-                    items[3]
-                ), tokens[1:]
+            if quoted:
+                list_tail, tokens = read_list_tail(tokens)
+                return to_slist(list_tail), tokens[1:]
 
-            if items[0] == SSym('define'):
-                assert len(items) >= 3, 'Missing parts of function def'
-                assert isinstance(items[1], SPair), 'Expected formals list'
+            parsed_first, tokens = parse(tokens)
+            if parsed_first == SSym('if'):
+                return parse_conditional(tokens)
 
-                assert items[1] is not Nil, 'Missing function name'
-                func_name = items[1].first
-                assert isinstance(func_name, SSym)
+            if parsed_first == SSym('define'):
+                return parse_define(tokens)
 
-                formals = items[1].second
-                assert isinstance(formals, SPair) or formals is Nil
-                return SFunction(
-                    func_name,
-                    cast(SList, formals),
-                    to_slist(items[2:])
-                ), tokens[1:]
+            if parsed_first == SSym('lambda'):
+                return parse_lambda(tokens)
 
-            if items[0] == SSym('lambda'):
-                assert len(items) >= 3, 'Missing parts of lambda def'
-                formals = items[1]
-                assert (
-                    isinstance(formals, SPair) or formals is Nil
-                ), 'Expected formals list'
+            if parsed_first == SSym('quote'):
+                quote, tokens = parse_quote(tokens)
+                return quote, tokens[1:]
 
-                return SFunction(
-                    SSym(next(lambda_names)),
-                    cast(SList, formals),
-                    to_slist(items[2:]),
-                    is_lambda=True
-                ), tokens[1:]
-
-            return to_slist(items), tokens[1:]
+            return parse_call(parsed_first, tokens)
         elif tokens[0].isdigit():
             return SNum(int(tokens[0])), tokens[1:]
+        elif tokens[0] in ('true', 'false'):
+            return SBool(tokens[0] == 'true'), tokens[1:]
         else:
             return SSym(tokens[0]), tokens[1:]
+
+    def parse_conditional(tokens: List[str]) -> Tuple[SExp, List[str]]:
+        items, tokens = read_list_tail(tokens)
+        assert len(items) == 3, 'Missing parts of conditional'
+        return SConditional(
+            items[0],
+            items[1],
+            items[2]
+        ), tokens[1:]
+
+    def parse_define(tokens: List[str]) -> Tuple[SExp, List[str]]:
+        params, tokens = parse_function_params(tokens)
+        assert len(params) >= 1, 'Missing function name'
+
+        body, tokens = read_list_tail(tokens)
+        return SFunction(
+            params[0],
+            params[1:],
+            to_slist(body)
+        ), tokens[1:]
+
+    def parse_lambda(tokens: List[str]) -> Tuple[SExp, List[str]]:
+        params, tokens = parse_function_params(tokens)
+
+        body, tokens = read_list_tail(tokens)
+        return SFunction(
+            SSym(next(lambda_names)),
+            params,
+            to_slist(body),
+            is_lambda=True
+        ), tokens[1:]
+
+    def parse_function_params(
+            tokens: List[str]) -> Tuple[List[SSym], List[str]]:
+        formals: List[SSym] = []
+
+        assert tokens[0] == '(', 'Expected parameter list'
+        tokens = tokens[1:]
+
+        expr_list, tokens = read_list_tail(tokens)
+        for item in expr_list:
+            assert isinstance(item, SSym), 'Expected a symbol'
+            formals.append(item)
+
+        return formals, tokens[1:]
+
+    def parse_call(func: SExp,
+                   tokens: List[str]) -> Tuple[SExp, List[str]]:
+        args, tokens = read_list_tail(tokens)
+        return SCall(func, args), tokens[1:]
+
+    def parse_quote(tokens: List[str]) -> Tuple[SExp, List[str]]:
+        quoted, tokens = parse(tokens, quoted=True)
+        return Quote(quoted), tokens
+
+    def read_list_tail(tokens: List[str]) -> Tuple[List[SExp], List[str]]:
+        items = []
+
+        while tokens[0] != ')':
+            item, tokens = parse(tokens)
+            items.append(item)
+
+        return items, tokens
 
     results = []
     while tokens:
@@ -321,5 +377,5 @@ def parse(x: str) -> List[SExp]:
 def lambda_name_generator() -> Iterator[str]:
     n = 0
     while True:
-        yield f'lambda{n}'
+        yield f'__lambda{n}'
         n += 1

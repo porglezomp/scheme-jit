@@ -7,9 +7,8 @@ from typing import (Counter, Dict, Generator, Iterable, Iterator, List,
                     Optional, Set)
 
 import scheme
-from environment import Environment
 from errors import Trap
-from scheme import SNum, SSym, SVect, Value
+from scheme import SBool, SExp, SNum, SSym, SVect, Value
 
 
 class Parameter(ABC):
@@ -67,20 +66,31 @@ class SymLit(Parameter):
         return f"'{self.value}"
 
 
+@dataclass(frozen=True)
+class BoolLit(Parameter):
+    value: SBool
+
+    def lookup_self(self, env: Dict[Var, Value]) -> Value:
+        return self.value
+
+    def __str__(self) -> str:
+        return f"'{self.value}"
+
+
 class EvalEnv:
     _local_env: Dict[Var, Value]
-    _global_env: Environment
+    _global_env: Dict[SSym, Value]
     stats: Counter[type]
 
     def __init__(self,
                  local_env: Optional[Dict[Var, Value]] = None,
-                 global_env: Optional[Environment] = None):
+                 global_env: Optional[Dict[SSym, Value]] = None):
         if local_env is None:
             self._local_env = {}
         else:
             self._local_env = local_env
         if global_env is None:
-            self._global_env = Environment(None)
+            self._global_env = {}
         else:
             self._global_env = global_env
         self.stats = Counter()
@@ -157,9 +167,9 @@ class BinopInst(Inst):
         rhs = env[self.rhs]
         if self.op == Binop.SYM_EQ:
             assert isinstance(lhs, SSym) and isinstance(rhs, SSym)
-            env[self.dest] = scheme.make_bool(lhs == rhs)
+            env[self.dest] = scheme.SBool(lhs == rhs)
         elif self.op == Binop.PTR_EQ:
-            env[self.dest] = scheme.make_bool(lhs.address() == rhs.address())
+            env[self.dest] = scheme.SBool(lhs.address() == rhs.address())
         else:
             assert isinstance(lhs, SNum) and isinstance(rhs, SNum)
             if self.op == Binop.ADD:
@@ -175,9 +185,9 @@ class BinopInst(Inst):
                 assert rhs.value != 0
                 env[self.dest] = SNum(lhs.value % rhs.value)
             elif self.op == Binop.NUM_EQ:
-                env[self.dest] = scheme.make_bool(lhs == rhs)
+                env[self.dest] = scheme.SBool(lhs == rhs)
             elif self.op == Binop.NUM_LT:
-                env[self.dest] = scheme.make_bool(lhs < rhs)
+                env[self.dest] = scheme.SBool(lhs < rhs)
             else:
                 raise ValueError(f"Unexpected op {self.op}")
 
@@ -289,7 +299,7 @@ class LengthInst(Inst):
     def run(self, env: EvalEnv) -> None:
         env.stats[type(self)] += 1
         vect = env[self.addr]
-        assert isinstance(vect, SVect)
+        assert isinstance(vect, SVect), vect
         env[self.dest] = SNum(len(vect.items))
 
     def __str__(self) -> str:
@@ -354,8 +364,8 @@ class BrInst(Inst):
     def run(self, env: EvalEnv) -> Optional[BB]:
         env.stats[type(self)] += 1
         res = env[self.cond]
-        assert res in (SSym('true'), SSym('false'))
-        if res == SSym('true'):
+        assert isinstance(res, scheme.SBool)
+        if res.value:
             return self.target
         return None
 
@@ -377,8 +387,8 @@ class BrnInst(Inst):
     def run(self, env: EvalEnv) -> Optional[BB]:
         env.stats[type(self)] += 1
         res = env[self.cond]
-        assert res in (SSym('true'), SSym('false'))
-        if res == SSym('false'):
+        assert isinstance(res, scheme.SBool)
+        if not res.value:
             return self.target
         return None
 

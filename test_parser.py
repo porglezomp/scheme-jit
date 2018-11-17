@@ -1,7 +1,8 @@
 import unittest
 
 import scheme
-from scheme import Nil, SConditional, SFunction, SNum, SPair, SSym, SVect
+from scheme import (Nil, Quote, SBool, SCall, SConditional, SFunction, SNum,
+                    SPair, SSym, SVect)
 
 
 class ParserTestCase(unittest.TestCase):
@@ -35,19 +36,8 @@ class ParserTestCase(unittest.TestCase):
     def test_parse_list(self) -> None:
         self.assertEqual(scheme.parse("()"), [Nil])
         self.assertEqual(
-            scheme.parse("(1 2 3)"),
-            [scheme.to_slist([SNum(1), SNum(2), SNum(3)])],
-        )
-        self.assertEqual(
-            scheme.parse("(spam (< x 0) 1 2)"),
-            [
-                scheme.to_slist([
-                    SSym("spam"),
-                    scheme.to_slist([SSym("<"), SSym("x"), SNum(0)]),
-                    SNum(1),
-                    SNum(2),
-                ]),
-            ]
+            scheme.parse("(func 2 3)"),
+            [SCall(SSym('func'), [SNum(2), SNum(3)])],
         )
 
     def test_vector(self) -> None:
@@ -58,18 +48,34 @@ class ParserTestCase(unittest.TestCase):
         )
 
     def test_quote(self) -> None:
+        self.assertEqual([Quote(SSym('spam'))], scheme.parse("'spam"))
+
+        self.assertEqual([Quote(Nil)], scheme.parse("'()"))
+        self.assertEqual([Quote(Nil)], scheme.parse("(quote ())"))
+
+        self.assertEqual([
+                Quote(
+                    scheme.to_slist(
+                        [SSym('if'), SBool(True), SNum(2), SNum(3)]
+                    )
+                )
+            ],
+            scheme.parse("'(if true 2 3)"))
+
+        self.assertEqual([Quote(scheme.to_slist([SNum(1), SNum(2), SNum(3)]))],
+                         scheme.parse("(quote (1 2 3))"))
+
         self.assertEqual(
             scheme.parse("'(1 2 3)"), scheme.parse("(quote (1 2 3))"))
 
-        # fixme?
-        # self.assertEqual(str(scheme.parse("(quote (1 2 3))")[0]), "'(1 2 3)")
+        self.assertEqual(str(scheme.parse("(quote (1 2 3))")[0]), "'(1 2 3)")
 
     def test_conditional(self) -> None:
         prog = '(if true 42 43) (if false 44 45)'
         self.assertEqual(
             [
-                SConditional(SSym('true'), SNum(42), SNum(43)),
-                SConditional(SSym('false'), SNum(44), SNum(45)),
+                SConditional(SBool(True), SNum(42), SNum(43)),
+                SConditional(SBool(False), SNum(44), SNum(45)),
             ],
             scheme.parse(prog)
         )
@@ -80,14 +86,12 @@ class ParserTestCase(unittest.TestCase):
             [
                 SFunction(
                     SSym('funcy'),
-                    scheme.to_slist([SSym('spam'), SSym('egg')]),
-                    scheme.to_slist(
-                        [scheme.to_slist(
-                            [SSym('+'), SSym('spam'), SSym('egg')])])
+                    [SSym('spam'), SSym('egg')],
+                    scheme.to_slist([
+                        SCall(SSym('+'), [SSym('spam'), SSym('egg')])
+                    ])
                 ),
-                scheme.to_slist(
-                    [SSym('funcy'), SNum(42), SNum(43)]
-                )
+                SCall(SSym('funcy'), [SNum(42), SNum(43)])
             ],
             scheme.parse(prog)
         )
@@ -97,20 +101,39 @@ class ParserTestCase(unittest.TestCase):
         self.assertEqual(
             [
                 SFunction(
-                    SSym('lambda0'),
-                    scheme.to_slist([SSym('spam'), SSym('egg')]),
-                    scheme.to_slist(
-                        [scheme.to_slist(
-                            [SSym('+'), SSym('spam'), SSym('egg')])]
-                    ),
+                    SSym('__lambda0'),
+                    [SSym('spam'), SSym('egg')],
+                    scheme.to_slist([
+                        SCall(SSym('+'), [SSym('spam'), SSym('egg')])
+                    ]),
                     is_lambda=True
                 ),
                 SFunction(
-                    SSym('lambda1'),
-                    Nil,
+                    SSym('__lambda1'),
+                    [],
                     scheme.to_slist([SNum(42)]),
                     is_lambda=True
                 ),
+            ],
+            scheme.parse(prog)
+        )
+
+    def test_lambda_called_inline(self) -> None:
+        self.maxDiff = None
+        prog = '((lambda (spam egg) (+ spam egg)) 42 43)'
+        self.assertEqual(
+            [
+                SCall(
+                    SFunction(
+                        SSym('__lambda0'),
+                        [SSym('spam'), SSym('egg')],
+                        scheme.to_slist([
+                            SCall(SSym('+'), [SSym('spam'), SSym('egg')])
+                        ]),
+                        is_lambda=True
+                    ),
+                    [SNum(42), SNum(43)]
+                )
             ],
             scheme.parse(prog)
         )
