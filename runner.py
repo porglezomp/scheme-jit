@@ -64,47 +64,64 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
     (define (assert b) (if b 0 (trap)))
     (define (typeof x) (inst/typeof x))
 
+    (define (number? x) (symbol= (typeof x) 'number))
+    (define (symbol? x) (symbol= (typeof x) 'symbol))
+    (define (vector? x) (symbol= (typeof x) 'vector))
+    (define (function? x) (symbol= (typeof x) 'function))
+    (define (bool? x) (symbol= (typeof x) 'bool))
+    (define (pair? x)
+      (if (vector? x)
+        (number= (vector-length x) 2)
+        false))
+    (define (nil? x)
+      (if (vector? x)
+        (number= (vector-length x) 0)
+        false))
+
     (define (pointer= a b) (inst/pointer= a b))
     (define (symbol= a b)
+      ; Explicitly use inst/symbol= instead of symbol? because
+      ; symbol? uses symbol=, so we need to avoid infinite recursion.
       (assert (inst/symbol= (typeof a) 'symbol))
       (assert (inst/symbol= (typeof b) 'symbol))
       (inst/symbol= a b))
     (define (number= a b)
-      (assert (symbol= (typeof a) 'number)
-      (assert (symbol= (typeof b) 'number)
-      (inst/number= a b))))
+      (assert (number? a))
+      (assert (number? b))
+      (inst/number= a b))
 
     (define (number< a b)
-      (assert (symbol= (typeof a) 'number))
-      (assert (symbol= (typeof b) 'number))
+      (assert (number? a))
+      (assert (number? b))
       (inst/number< a b))
 
     (define (vector-length v)
-      (assert (symbol= (typeof v) 'vector))
+      (assert (vector? v))
       (inst/length v))
 
     (define (vector-index v n)
-      (assert (symbol= (typeof v) 'vector))
-      (assert (symbol= (typeof n) 'number))
+      (assert (vector? v))
+      (assert (number? n))
       (assert (number< -1 n))
       (assert (number< n (vector-length v)))
       (inst/load v n))
 
     (define (vector-set! v n x)
-      (assert (symbol= (typeof v) 'vector))
-      (assert (symbol= (typeof n) 'number))
+      (assert (vector? v))
+      (assert (number? n))
       (assert (number< -1 n))
       (assert (number< n (vector-length v)))
       (inst/store v n x))
 
+    ;; The loop body for vector-make.
+    ;; Fills the allocated vector. Not to be used on its own.
     (define (vector-make/recur len idx v x)
       (vector-set! v idx x)
       (if (number= len (+ idx 1))
         v
         (vector-make/recur len (+ idx 1) v x)))
-
     (define (vector-make n x)
-      (assert (symbol= (typeof n) 'number))
+      (assert (number? n))
       (assert (number< -1 n))
       (if (number= n 0)
         (inst/alloc 0)
@@ -118,6 +135,7 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
 def add_prelude(env: Dict[SSym, Value]) -> None:
     """Add prelude functions to the environment."""
     code = scheme.parse("""
+    ;; The loop body for vector=, not to be used on its own
     (define (vector=/recur x y n end)
       (if (= n end)
         true
@@ -125,6 +143,8 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
           (vector=/recur x y (+ n 1) end)
           false)))
     (define (vector= x y)
+      (assert (vector? x))
+      (assert (vector? y))
       (if (pointer= x y)
         true
         (if (= (vector-length x) (vector-length y))
@@ -134,11 +154,11 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
     (define (= x y)
       (if (not (symbol= (typeof x) (typeof y)))
         false
-        (if (symbol= (typeof x) 'symbol)
+        (if (symbol? x)
           (symbol= x y)
-          (if (symbol= (typeof x) 'number)
+          (if (number? x)
             (number= x y)
-            (if (symbol= (typeof x) 'vector)
+            (if (vector? x)
               (vector= x y)
               (pointer= x y))))))
 
@@ -149,17 +169,6 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
     (define (> x y) (< y x))
     (define (<= x y) (if (= x y) true (< x y)))
     (define (>= x y) (if (= x y) true (> x y)))
-
-    (define (number? x) (= (typeof x) 'number))
-    (define (symbol? x) (= (typeof x) 'symbol))
-    (define (vector? x) (= (typeof x) 'vector))
-    (define (function? x) (= (typeof x) 'function))
-    (define (bool? x) (= (typeof x) 'bool))
-    (define (pair? x)
-      (if (not (vector? x))
-        false
-        (= (vector-length x) 2)))
-    (define (nil? x) (= x []))
 
     (define (cons x l) [x l])
     (define (car l) (vector-index l 0))
