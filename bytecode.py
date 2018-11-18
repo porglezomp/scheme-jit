@@ -324,7 +324,7 @@ class CallInst(Inst):
             raise NotImplementedError("JIT compiling functions!")
         func_code = func.code
         func_env = env.copy()
-        assert len(func_code.params)
+        assert len(func_code.params) == len(self.args)
         func_env._local_env = {
             name: env[arg] for name, arg in zip(func_code.params, self.args)
         }

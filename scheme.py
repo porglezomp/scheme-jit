@@ -262,6 +262,9 @@ def parse(x: str) -> List[SExp]:
 
     lambda_names = lambda_name_generator()
 
+    def is_number(x: str) -> bool:
+        return x.isdecimal() or (x.startswith('-') and x[1:].isdecimal())
+
     def parse(tokens: List[str],
               quoted: bool = False) -> Tuple[SExp, List[str]]:
         if not tokens:
@@ -300,7 +303,7 @@ def parse(x: str) -> List[SExp]:
                 return quote, tokens[1:]
 
             return parse_call(parsed_first, tokens)
-        elif tokens[0].isdigit():
+        elif is_number(tokens[0]):
             return SNum(int(tokens[0])), tokens[1:]
         elif tokens[0] in ('true', 'false'):
             return SBool(tokens[0] == 'true'), tokens[1:]
