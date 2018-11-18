@@ -111,4 +111,20 @@ class BuiltinsTestCase(unittest.TestCase):
         )
 
     def test_prelude(self) -> None:
-        pass
+        env: Dict[SSym, Value] = {}
+        runner.add_intrinsics(env)
+        runner.add_builtins(env)
+        runner.add_prelude(env)
+
+        self.assertEqual(
+            run(env, "(= (cons 42 (cons 13 (cons 'a []))) '(42 13 a))"),
+            SBool(True)
+        )
+        self.assertEqual(
+            run(env, "(= [1 2 [3 4 5] 6 [[7]]] [1 2 [3 4 5] 6 [[7]]])"),
+            SBool(True)
+        )
+        self.assertEqual(
+            run(env, "(= [1 2 [3 4 5] 6 [[7]]] [1 2 [3 4 5] 6 [[7]]])"),
+            SBool(True)
+        )
