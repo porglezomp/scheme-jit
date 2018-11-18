@@ -12,7 +12,7 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
     """Add intrinsics to the environment."""
     def inst_function(
             name: SSym, params: List[Var],
-            return_to: Optional[Var], *insts: Inst,
+            return_to: Optional[bytecode.Parameter], *insts: Inst,
             ) -> SFunction:
         """Create a function out of the instructions in insts."""
         begin = BasicBlock('bb0')
@@ -36,6 +36,12 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
     env[SSym('inst/trap')] = inst_function(
         SSym('inst/trap'), [], None,
         bytecode.TrapInst("(trap)"))
+    env[SSym('inst/trace')] = inst_function(
+        SSym('inst/trace'), [Var('x')], bytecode.NumLit(scheme.SNum(0)),
+        bytecode.TraceInst(Var('x')))
+    env[SSym('inst/breakpoint')] = inst_function(
+        SSym('inst/breakpoint'), [], bytecode.NumLit(scheme.SNum(0)),
+        bytecode.BreakpointInst())
     # Memory operations
     env[SSym('inst/alloc')] = inst_function(
         SSym('inst/alloc'), [Var('n')], result,
@@ -65,6 +71,8 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
     """Add builtins to the environment."""
     code = scheme.parse("""
     (define (trap) (inst/trap))
+    (define (trace x) (inst/trace x))
+    (define (breakpoint) (inst/breakpoint))
     (define (assert b) (if b 0 (trap)))
     (define (typeof x) (inst/typeof x))
     (define (not b) (if b false true))

@@ -422,6 +422,26 @@ class TrapInst(Inst):
 
 
 @dataclass
+class TraceInst(Inst):
+    value: Parameter
+
+    def run(self, env: EvalEnv) -> None:
+        print(env[self.value])
+
+    def __str__(self) -> str:
+        return f"trace {self.value}"
+
+
+@dataclass
+class BreakpointInst(Inst):
+    def run(self, env: EvalEnv) -> None:
+        breakpoint()
+
+    def __str__(self) -> str:
+        return f"breakpoint"
+
+
+@dataclass
 class BasicBlock(BB):
     name: str
     instructions: List[Inst] = field(default_factory=list)
