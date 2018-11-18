@@ -247,6 +247,9 @@ class SConditional(SExp):
 
 
 def parse(x: str) -> List[SExp]:
+    # Remove line comments. Since we don't have string literals,
+    # we don't need fancier than this!
+    x = '\n'.join(l.split(';')[0] for l in x.split('\n'))
     tokens = (
         x
         .replace('(', ' ( ')

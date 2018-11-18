@@ -138,6 +138,34 @@ class ParserTestCase(unittest.TestCase):
             scheme.parse(prog)
         )
 
+    def test_comments(self) -> None:
+        prog = """
+        ;;; We want to define a cool function here!
+        (define ; hi
+          ;; A function name
+          (cool-func x y) ; wow
+          ;; branches are cheaper than subtraction, right? :P
+          (if (= x y)
+            0
+            (- x y)))
+        """
+        self.assertEqual(
+            [
+                SFunction(
+                    SSym('cool-func'),
+                    [SSym('x'), SSym('y')],
+                    scheme.to_slist([
+                        SConditional(
+                            SCall(SSym('='), [SSym('x'), SSym('y')]),
+                            SNum(0),
+                            SCall(SSym('-'), [SSym('x'), SSym('y')])
+                        )
+                    ])
+                )
+            ],
+            scheme.parse(prog)
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
