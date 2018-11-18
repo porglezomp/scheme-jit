@@ -7,26 +7,35 @@ from emit_IR import FunctionEmitter
 from scheme import Nil, SFunction, SSym, Value
 
 
-def inst_function(
-        name: SSym, params: List[Var],
-        return_to: Optional[Var], *insts: Inst,
-        ) -> SFunction:
-    """Create a function out of the instructions in insts."""
-    begin = BasicBlock('bb0')
-    for inst in insts:
-        begin.add_inst(inst)
-    if return_to is not None:
-        begin.add_inst(bytecode.ReturnInst(return_to))
-    code = Function(params, begin)
-    return SFunction(name, [SSym(p.name) for p in params], Nil, code, False)
-
-
 def add_intrinsics(env: Dict[SSym, Value]) -> None:
     """Add intrinsics to the environment."""
+    def inst_function(
+            name: SSym, params: List[Var],
+            return_to: Optional[Var], *insts: Inst,
+            ) -> SFunction:
+        """Create a function out of the instructions in insts."""
+        begin = BasicBlock('bb0')
+        for inst in insts:
+            begin.add_inst(inst)
+        if return_to is not None:
+            begin.add_inst(bytecode.ReturnInst(return_to))
+        code = Function(params, begin)
+        param_syms = [SSym(p.name) for p in params]
+        return SFunction(name, param_syms, Nil, code, False)
+
+    def binop(name: SSym, op: Binop) -> SFunction:
+        return inst_function(
+            name, [Var('a'), Var('b')], result,
+            bytecode.BinopInst(result, op, Var('a'), Var('b')))
+
     result = Var('result')
     env[SSym('inst/typeof')] = inst_function(
         SSym('inst/typeof'), [Var('x')], result,
         bytecode.TypeofInst(result, Var('x')))
+    env[SSym('inst/trap')] = inst_function(
+        SSym('inst/trap'), [], None,
+        bytecode.TrapInst("(trap)"))
+    # Memory operations
     env[SSym('inst/alloc')] = inst_function(
         SSym('inst/alloc'), [Var('n')], result,
         bytecode.AllocInst(result, Var('n')))
@@ -40,21 +49,16 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
     env[SSym('inst/length')] = inst_function(
         SSym('inst/length'), [Var('v')], result,
         bytecode.LengthInst(result, Var('v')))
-    env[SSym('inst/pointer=')] = inst_function(
-        SSym('inst/pointer='), [Var('a'), Var('b')], result,
-        bytecode.BinopInst(result, Binop.PTR_EQ, Var('a'), Var('b')))
-    env[SSym('inst/number=')] = inst_function(
-        SSym('inst/number='), [Var('a'), Var('b')], result,
-        bytecode.BinopInst(result, Binop.NUM_EQ, Var('a'), Var('b')))
-    env[SSym('inst/symbol=')] = inst_function(
-        SSym('inst/symbol='), [Var('a'), Var('b')], result,
-        bytecode.BinopInst(result, Binop.SYM_EQ, Var('a'), Var('b')))
-    env[SSym('inst/number<')] = inst_function(
-        SSym('inst/number<'), [Var('a'), Var('b')], result,
-        bytecode.BinopInst(result, Binop.NUM_LT, Var('a'), Var('b')))
-    env[SSym('inst/trap')] = inst_function(
-        SSym('inst/trap'), [], None,
-        bytecode.TrapInst("(trap)"))
+    # Binary operators
+    env[SSym('inst/+')] = binop(SSym('inst/+'), Binop.ADD)
+    env[SSym('inst/-')] = binop(SSym('inst/-'), Binop.SUB)
+    env[SSym('inst/*')] = binop(SSym('inst/*'), Binop.MUL)
+    env[SSym('inst//')] = binop(SSym('inst//'), Binop.DIV)
+    env[SSym('inst/%')] = binop(SSym('inst/%'), Binop.DIV)
+    env[SSym('inst/number=')] = binop(SSym('inst/number='), Binop.NUM_EQ)
+    env[SSym('inst/symbol=')] = binop(SSym('inst/symbol='), Binop.SYM_EQ)
+    env[SSym('inst/pointer=')] = binop(SSym('inst/pointer='), Binop.PTR_EQ)
+    env[SSym('inst/number<')] = binop(SSym('inst/number<'), Binop.NUM_LT)
 
 
 def add_builtins(env: Dict[SSym, Value]) -> None:
@@ -77,6 +81,12 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
       (if (vector? x)
         (number= (vector-length x) 0)
         false))
+
+    (define (+ a b) (assert (number? a)) (assert (number? b)) (inst/+ a b))
+    (define (- a b) (assert (number? a)) (assert (number? b)) (inst/- a b))
+    (define (* a b) (assert (number? a)) (assert (number? b)) (inst/* a b))
+    (define (/ a b) (assert (number? a)) (assert (number? b)) (inst// a b))
+    (define (% a b) (assert (number? a)) (assert (number? b)) (inst/% a b))
 
     (define (pointer= a b) (inst/pointer= a b))
     (define (symbol= a b)
