@@ -459,7 +459,8 @@ class BasicBlock(BB):
         for inst in self.instructions:
             if isinstance(inst, CallInst):
                 yield from inst.run_call(env)
-            next_bb = inst.run(env)
+            else:
+                next_bb = inst.run(env)
             yield env.copy()
             if next_bb is not None:
                 break
