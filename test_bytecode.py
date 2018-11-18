@@ -3,7 +3,7 @@ from typing import Any
 
 import bytecode
 from bytecode import Binop, BoolLit, NumLit, SymLit, Var
-from scheme import SBool, SNum, SSym, SVect
+from sexp import SBool, SNum, SSym, SVect
 
 
 class BytecodeTestCast(unittest.TestCase):

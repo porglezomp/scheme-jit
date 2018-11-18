@@ -6,9 +6,9 @@ from enum import Enum, auto
 from typing import (Any, Counter, Dict, Generator, Generic, Iterable, Iterator,
                     List, Optional, Set, TypeVar)
 
-import scheme
+import sexp
 from errors import Trap
-from scheme import SBool, SExp, SNum, SSym, SVect, Value
+from sexp import SBool, SExp, SNum, SSym, SVect, Value
 
 
 class Parameter(ABC):
@@ -167,9 +167,9 @@ class BinopInst(Inst):
         rhs = env[self.rhs]
         if self.op == Binop.SYM_EQ:
             assert isinstance(lhs, SSym) and isinstance(rhs, SSym)
-            env[self.dest] = scheme.SBool(lhs == rhs)
+            env[self.dest] = sexp.SBool(lhs == rhs)
         elif self.op == Binop.PTR_EQ:
-            env[self.dest] = scheme.SBool(lhs.address() == rhs.address())
+            env[self.dest] = sexp.SBool(lhs.address() == rhs.address())
         else:
             assert isinstance(lhs, SNum) and isinstance(rhs, SNum)
             if self.op == Binop.ADD:
@@ -185,9 +185,9 @@ class BinopInst(Inst):
                 assert rhs.value != 0
                 env[self.dest] = SNum(lhs.value % rhs.value)
             elif self.op == Binop.NUM_EQ:
-                env[self.dest] = scheme.SBool(lhs == rhs)
+                env[self.dest] = sexp.SBool(lhs == rhs)
             elif self.op == Binop.NUM_LT:
-                env[self.dest] = scheme.SBool(lhs < rhs)
+                env[self.dest] = sexp.SBool(lhs < rhs)
             else:
                 raise ValueError(f"Unexpected op {self.op}")
 
@@ -247,7 +247,7 @@ class AllocInst(Inst):
         env.stats[type(self)] += 1
         size = env[self.size]
         assert isinstance(size, SNum)
-        env[self.dest] = SVect([scheme.Nil] * size.value)
+        env[self.dest] = SVect([sexp.Nil] * size.value)
 
     def __str__(self) -> str:
         return f"{self.dest} = alloc {self.size}"
@@ -319,7 +319,7 @@ class CallInst(Inst):
 
     def run_call(self, env: EvalEnv) -> Generator[EvalEnv, None, None]:
         func = env[self.func]
-        assert isinstance(func, scheme.SFunction)
+        assert isinstance(func, sexp.SFunction)
         if func.code is None:
             raise NotImplementedError("JIT compiling functions!")
         func_code = func.code
@@ -364,7 +364,7 @@ class BrInst(Inst):
     def run(self, env: EvalEnv) -> Optional[BB]:
         env.stats[type(self)] += 1
         res = env[self.cond]
-        assert isinstance(res, scheme.SBool)
+        assert isinstance(res, sexp.SBool)
         if res.value:
             return self.target
         return None
@@ -387,7 +387,7 @@ class BrnInst(Inst):
     def run(self, env: EvalEnv) -> Optional[BB]:
         env.stats[type(self)] += 1
         res = env[self.cond]
-        assert isinstance(res, scheme.SBool)
+        assert isinstance(res, sexp.SBool)
         if not res.value:
             return self.target
         return None

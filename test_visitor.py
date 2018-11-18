@@ -1,15 +1,15 @@
 import unittest
 from typing import List, Tuple
 
-import scheme
-from scheme import (Nil, Quote, SBool, SCall, SConditional, SExp, SFunction,
-                    SNum, SPair, SSym, SVect)
+import sexp
+from sexp import (Nil, Quote, SBool, SCall, SConditional, SExp, SFunction,
+                  SNum, SPair, SSym, SVect)
 from visitor import Visitor
 
 
 class VisitorTestCase(unittest.TestCase):
     def test_visit_vect(self) -> None:
-        prog = scheme.parse('[1 spam true]')
+        prog = sexp.parse('[1 spam true]')
         recorder = TraversalRecorder()
         recorder.visit(prog)
 
@@ -27,7 +27,7 @@ class VisitorTestCase(unittest.TestCase):
         self.assertEqual(len(expected), counter.num_exprs)
 
     def test_visit_quote(self) -> None:
-        prog = scheme.parse('(quote (1 spam true))')
+        prog = sexp.parse('(quote (1 spam true))')
         recorder = TraversalRecorder()
         recorder.visit(prog)
 
@@ -48,7 +48,7 @@ class VisitorTestCase(unittest.TestCase):
         self.assertEqual(len(expected), counter.num_exprs)
 
     def test_visit_function(self) -> None:
-        prog = scheme.parse('(define (spam egg sausage) true egg)')
+        prog = sexp.parse('(define (spam egg sausage) true egg)')
         recorder = TraversalRecorder()
         recorder.visit(prog)
 
@@ -68,7 +68,7 @@ class VisitorTestCase(unittest.TestCase):
         self.assertEqual(len(expected), counter.num_exprs)
 
     def test_visit_lambda(self) -> None:
-        prog = scheme.parse('(lambda (egg sausage) false egg)')
+        prog = sexp.parse('(lambda (egg sausage) false egg)')
         recorder = TraversalRecorder()
         recorder.visit(prog)
 
@@ -87,7 +87,7 @@ class VisitorTestCase(unittest.TestCase):
         self.assertEqual(len(expected), counter.num_exprs)
 
     def test_visit_conditional(self) -> None:
-        prog = scheme.parse('(if true 42 nope)')
+        prog = sexp.parse('(if true 42 nope)')
         recorder = TraversalRecorder()
         recorder.visit(prog)
 
@@ -105,7 +105,7 @@ class VisitorTestCase(unittest.TestCase):
         self.assertEqual(len(expected), counter.num_exprs)
 
     def test_visit_call(self) -> None:
-        prog = scheme.parse('(define (spam egg sausage) egg) (spam 42 true)')
+        prog = sexp.parse('(define (spam egg sausage) egg) (spam 42 true)')
         recorder = TraversalRecorder()
         recorder.visit(prog)
 
@@ -129,7 +129,7 @@ class VisitorTestCase(unittest.TestCase):
         self.assertEqual(len(expected), counter.num_exprs)
 
     def test_visit_inline_called_lambda(self) -> None:
-        prog = scheme.parse('((lambda (egg) egg) 42)')
+        prog = sexp.parse('((lambda (egg) egg) 42)')
         recorder = TraversalRecorder()
         recorder.visit(prog)
 
