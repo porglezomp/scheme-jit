@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import bytecode
 import scheme
@@ -8,14 +8,15 @@ from scheme import Nil, SFunction, SSym, Value
 
 
 def inst_function(
-        name: SSym, params: List[Var], *insts: Inst,
-        should_return: bool = True) -> SFunction:
-    """Create a function that's just one instruction."""
+        name: SSym, params: List[Var],
+        return_to: Optional[Var], *insts: Inst,
+        ) -> SFunction:
+    """Create a function out of the instructions in insts."""
     begin = BasicBlock('bb0')
     for inst in insts:
         begin.add_inst(inst)
-    if should_return:
-        begin.add_inst(bytecode.ReturnInst(Var('result')))
+    if return_to is not None:
+        begin.add_inst(bytecode.ReturnInst(return_to))
     code = Function(params, begin)
     return SFunction(name, [SSym(p.name) for p in params], Nil, code, False)
 
@@ -24,43 +25,40 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
     """Add intrinsics to the environment."""
     result = Var('result')
     env[SSym('inst/typeof')] = inst_function(
-        SSym('inst/typeof'), [Var('x')],
+        SSym('inst/typeof'), [Var('x')], result,
         bytecode.TypeofInst(result, Var('x')))
     env[SSym('inst/alloc')] = inst_function(
-        SSym('inst/alloc'), [Var('n')],
+        SSym('inst/alloc'), [Var('n')], result,
         bytecode.AllocInst(result, Var('n')))
     env[SSym('inst/load')] = inst_function(
-        SSym('inst/load'), [Var('v'), Var('n')],
+        SSym('inst/load'), [Var('v'), Var('n')], result,
         bytecode.LoadInst(result, Var('v'), Var('n')))
     env[SSym('inst/store')] = inst_function(
-        SSym('inst/store'), [Var('v'), Var('n'), Var('x')],
+        SSym('inst/store'), [Var('v'), Var('n'), Var('x')], None,
         bytecode.StoreInst(Var('v'), Var('n'), Var('x')),
-        bytecode.ReturnInst(bytecode.NumLit(scheme.SNum(0))),
-        should_return=False)
+        bytecode.ReturnInst(bytecode.NumLit(scheme.SNum(0))))
     env[SSym('inst/length')] = inst_function(
-        SSym('inst/length'), [Var('v')],
+        SSym('inst/length'), [Var('v')], result,
         bytecode.LengthInst(result, Var('v')))
     env[SSym('inst/pointer=')] = inst_function(
-        SSym('inst/pointer='), [Var('a'), Var('b')],
+        SSym('inst/pointer='), [Var('a'), Var('b')], result,
         bytecode.BinopInst(result, Binop.PTR_EQ, Var('a'), Var('b')))
     env[SSym('inst/number=')] = inst_function(
-        SSym('inst/number='), [Var('a'), Var('b')],
+        SSym('inst/number='), [Var('a'), Var('b')], result,
         bytecode.BinopInst(result, Binop.NUM_EQ, Var('a'), Var('b')))
     env[SSym('inst/symbol=')] = inst_function(
-        SSym('inst/symbol='), [Var('a'), Var('b')],
+        SSym('inst/symbol='), [Var('a'), Var('b')], result,
         bytecode.BinopInst(result, Binop.SYM_EQ, Var('a'), Var('b')))
     env[SSym('inst/number<')] = inst_function(
-        SSym('inst/number<'), [Var('a'), Var('b')],
+        SSym('inst/number<'), [Var('a'), Var('b')], result,
         bytecode.BinopInst(result, Binop.NUM_LT, Var('a'), Var('b')))
     env[SSym('inst/trap')] = inst_function(
-        SSym('inst/trap'), [],
-        bytecode.TrapInst("(trap)"),
-        should_return=False)
+        SSym('inst/trap'), [], None,
+        bytecode.TrapInst("(trap)"))
 
 
 def add_builtins(env: Dict[SSym, Value]) -> None:
     """Add builtins to the environment."""
-    add_intrinsics(env)  # @TODO: Don't do this, for greater flexibility?
     code = scheme.parse("""
     (define (trap) (inst/trap))
     (define (assert b) (if b 0 (trap)))
@@ -118,8 +116,7 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
 
 
 def add_prelude(env: Dict[SSym, Value]) -> None:
-    """Add intrinsics to the environment."""
-    add_builtins(env)  # @TODO: Don't do this, for greater flexibility?
+    """Add prelude functions to the environment."""
     code = scheme.parse("""
     (define (vector=/recur x y n end)
       (if (= n end)
@@ -135,15 +132,15 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
             false)))
 
     (define (= x y)
-      (if (symbol= (typeof x) (typeof y))
+      (if (not (symbol= (typeof x) (typeof y)))
+        false
         (if (symbol= (typeof x) 'symbol)
           (symbol= x y)
           (if (symbol= (typeof x) 'number)
             (number= x y)
             (if (symbol= (typeof x) 'vector)
               (vector= x y)
-              (pointer= x y))))
-        false))
+              (pointer= x y))))))
 
     (define (< x y) (number< x y))
 
@@ -159,9 +156,9 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
     (define (function? x) (= (typeof x) 'function))
     (define (bool? x) (= (typeof x) 'bool))
     (define (pair? x)
-      (if (vector? x)
-        (= (vector-length x) 2)
-        false))
+      (if (not (vector? x))
+        false
+        (= (vector-length x) 2)))
     (define (nil? x) (= x []))
 
     (define (cons x l) [x l])
