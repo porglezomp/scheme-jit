@@ -75,7 +75,9 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
     (define (breakpoint) (inst/breakpoint))
     (define (assert b) (if b 0 (trap)))
     (define (typeof x) (inst/typeof x))
-    (define (not b) (if b false true))
+    (define (not b)
+      (assert (bool? b))
+      (if b false true))
 
     (define (number? x) (symbol= (typeof x) 'number))
     (define (symbol? x) (symbol= (typeof x) 'symbol))
