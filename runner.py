@@ -44,9 +44,8 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
         SSym('inst/load'), [Var('v'), Var('n')], result,
         bytecode.LoadInst(result, Var('v'), Var('n')))
     env[SSym('inst/store')] = inst_function(
-        SSym('inst/store'), [Var('v'), Var('n'), Var('x')], None,
-        bytecode.StoreInst(Var('v'), Var('n'), Var('x')),
-        bytecode.ReturnInst(bytecode.NumLit(scheme.SNum(0))))
+        SSym('inst/store'), [Var('v'), Var('n'), Var('x')], Var('v'),
+        bytecode.StoreInst(Var('v'), Var('n'), Var('x')))
     env[SSym('inst/length')] = inst_function(
         SSym('inst/length'), [Var('v')], result,
         bytecode.LengthInst(result, Var('v')))
@@ -55,7 +54,7 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
     env[SSym('inst/-')] = binop(SSym('inst/-'), Binop.SUB)
     env[SSym('inst/*')] = binop(SSym('inst/*'), Binop.MUL)
     env[SSym('inst//')] = binop(SSym('inst//'), Binop.DIV)
-    env[SSym('inst/%')] = binop(SSym('inst/%'), Binop.DIV)
+    env[SSym('inst/%')] = binop(SSym('inst/%'), Binop.MOD)
     env[SSym('inst/number=')] = binop(SSym('inst/number='), Binop.NUM_EQ)
     env[SSym('inst/symbol=')] = binop(SSym('inst/symbol='), Binop.SYM_EQ)
     env[SSym('inst/pointer=')] = binop(SSym('inst/pointer='), Binop.PTR_EQ)
@@ -68,6 +67,7 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
     (define (trap) (inst/trap))
     (define (assert b) (if b 0 (trap)))
     (define (typeof x) (inst/typeof x))
+    (define (not b) (if b false true))
 
     (define (number? x) (symbol= (typeof x) 'number))
     (define (symbol? x) (symbol= (typeof x) 'symbol))
@@ -86,8 +86,16 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
     (define (+ a b) (assert (number? a)) (assert (number? b)) (inst/+ a b))
     (define (- a b) (assert (number? a)) (assert (number? b)) (inst/- a b))
     (define (* a b) (assert (number? a)) (assert (number? b)) (inst/* a b))
-    (define (/ a b) (assert (number? a)) (assert (number? b)) (inst// a b))
-    (define (% a b) (assert (number? a)) (assert (number? b)) (inst/% a b))
+    (define (/ a b)
+      (assert (number? a))
+      (assert (number? b))
+      (assert (not (number= b 0)))
+      (inst// a b))
+    (define (% a b)
+      (assert (number? a))
+      (assert (number? b))
+      (assert (not (number= b 0)))
+      (inst/% a b))
 
     (define (pointer= a b) (inst/pointer= a b))
     (define (symbol= a b)
@@ -175,7 +183,6 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
 
     (define (< x y) (number< x y))
 
-    (define (not b) (if b false true))
     (define (!= x y) (not (= x y)))
     (define (> x y) (< y x))
     (define (<= x y) (if (= x y) true (< x y)))
