@@ -96,7 +96,22 @@ class BuiltinsTestCase(unittest.TestCase):
             run(env, '(symbol= 1 0)')
         self.assertEqual(run(env, "(symbol= 'a 'b)"), SBool(False))
         self.assertEqual(run(env, "(symbol= 'a 'a)"), SBool(True))
-        # I don't want to test the other foo= functions, they're very similar
+
+        self.assertEqual(run(env, "(pointer= (lambda () 0) (lambda () 0))"),
+                         SBool(False))
+        self.assertEqual(run(env, "(define (func) 42) (pointer= func func)"),
+                         SBool(True))
+        self.assertEqual(run(env, "(pointer= 0 0)"), SBool(True))
+
+        with self.assertRaises(errors.Trap, msg="(trap)"):
+            run(env, "(number= 'num 1)")
+        self.assertEqual(run(env, "(number= 42 43)"), SBool(False))
+        self.assertEqual(run(env, "(number= 42 42)"), SBool(True))
+
+        with self.assertRaises(errors.Trap, msg="(trap)"):
+            run(env, "(number< 'num 1)")
+        self.assertEqual(run(env, "(number< 42 42)"), SBool(False))
+        self.assertEqual(run(env, "(number< 42 43)"), SBool(True))
 
         self.assertEqual(run(env, '(vector-length [1 2 3])'), SNum(3))
         self.assertEqual(run(env, '(vector-index [1 2 3] 1)'), SNum(2))

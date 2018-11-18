@@ -12,14 +12,14 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
     """Add intrinsics to the environment."""
     def inst_function(
             name: SSym, params: List[Var],
-            return_to: Optional[bytecode.Parameter], *insts: Inst,
+            return_val: Optional[bytecode.Parameter], *insts: Inst,
             ) -> SFunction:
         """Create a function out of the instructions in insts."""
         begin = BasicBlock('bb0')
         for inst in insts:
             begin.add_inst(inst)
-        if return_to is not None:
-            begin.add_inst(bytecode.ReturnInst(return_to))
+        if return_val is not None:
+            begin.add_inst(bytecode.ReturnInst(return_val))
         code = Function(params, begin)
         param_syms = [SSym(p.name) for p in params]
         return SFunction(name, param_syms, Nil, code, False)
@@ -207,7 +207,7 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
         emitter.visit(definition)
 
 
-name_counter = 0
+eval_names = emit_IR.name_generator('__eval_expr')
 
 
 def run_code(env: Dict[SSym, Value], code: SExp) -> Value:
@@ -217,7 +217,7 @@ def run_code(env: Dict[SSym, Value], code: SExp) -> Value:
         emitter.visit(code)
         return env[code.name]
     else:
-        name = SSym(f'__eval_expr{name_counter}')
+        name = SSym(f'{next(eval_names)}')
         code = scheme.SFunction(
             name, [], scheme.to_slist([code]), is_lambda=True)
         emitter.visit(code)

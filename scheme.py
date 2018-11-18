@@ -54,7 +54,7 @@ class SBool(Value):
         return SSym('bool')
 
     def address(self) -> int:
-        raise Exception("Should not take the address of a boolean")
+        return id(self.value)
 
 
 @dataclass(frozen=True)
@@ -72,7 +72,7 @@ class SSym(Value):
         return SSym('symbol')
 
     def address(self) -> int:
-        raise Exception("Should not take the address of a symbol")
+        return id(self.name)
 
 
 @dataclass(frozen=True)
