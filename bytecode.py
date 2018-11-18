@@ -3,8 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import (Counter, Dict, Generator, Iterable, Iterator, List,
-                    Optional, Set)
+from typing import (Any, Counter, Dict, Generator, Generic, Iterable, Iterator,
+                    List, Optional, Set, TypeVar)
 
 import scheme
 from errors import Trap
@@ -492,3 +492,23 @@ class Function:
         return (f"function ({', '.join(x.name for x in self.params)})"
                 f" entry={self.start.name}\n"
                 + '\n\n'.join(str(b) for b in self.blocks()))
+
+
+T = TypeVar('T')
+
+
+class ResultGenerator(Generic[T]):
+    """A class to get the result from running a generator."""
+    gen: Generator[Any, Any, T]
+    value: Optional[T]
+
+    def __init__(self, gen: Generator[Any, Any, T]):
+        self.gen = gen
+        self.value = None
+
+    def __iter__(self) -> Any:
+        self.value = yield from self.gen
+
+    def run(self) -> None:
+        for _ in self:
+            pass

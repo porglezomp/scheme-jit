@@ -1,10 +1,11 @@
 from typing import Dict, List, Optional
 
 import bytecode
+import emit_IR
 import scheme
 from bytecode import BasicBlock, Binop, Function, Inst, Var
 from emit_IR import FunctionEmitter
-from scheme import Nil, SFunction, SSym, Value
+from scheme import Nil, SExp, SFunction, SSym, Value
 
 
 def add_intrinsics(env: Dict[SSym, Value]) -> None:
@@ -187,3 +188,47 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
     emitter = FunctionEmitter(env)
     for definition in code:
         emitter.visit(definition)
+
+
+name_counter = 0
+
+
+def run_code(env: Dict[SSym, Value], code: SExp) -> Value:
+    """Run a piece of code in an environment, returning its result."""
+    emitter = FunctionEmitter(env)
+    if isinstance(code, scheme.SFunction):
+        emitter.visit(code)
+        return env[code.name]
+    else:
+        name = SSym(f'__eval_expr{name_counter}')
+        code = scheme.SFunction(
+            name, [], scheme.to_slist([code]), is_lambda=True)
+        emitter.visit(code)
+        function = env[name]
+        assert isinstance(function, scheme.SFunction)
+        assert function.code is not None
+        eval_env = bytecode.EvalEnv({}, env)
+        gen = bytecode.ResultGenerator(function.code.run(eval_env))
+        gen.run()
+        assert gen.value is not None
+        return gen.value
+
+
+def run(env: Dict[SSym, Value], text: str) -> Value:
+    """
+    Run a piece of code in an environment, returning its result.
+
+    >>> env = {}
+    >>> add_intrinsics(env)
+    >>> add_builtins(env)
+    >>> add_prelude(env)
+    >>> run(env, '(+ 1 1)')
+    SNum(value=2)
+    >>> run(env, '(> (vector-length (cons 1 [])) 3)')
+    SBool(value=False)
+    """
+    code = scheme.parse(text)
+    result: Value = scheme.SVect([])
+    for part in code:
+        result = run_code(env, part)
+    return result
