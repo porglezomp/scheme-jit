@@ -532,9 +532,10 @@ class Function:
         while blocks:
             block = blocks.pop()
             yield block
-            blocks.extend(b for b in block.successors()
-                          if id(b) not in visited)
-            visited |= set(map(id, blocks))
+            for b in block.successors():
+                if id(b) not in visited:
+                    visited.add(id(b))
+                    blocks.append(b)
 
     def __str__(self) -> str:
         return (f"function (? {' '.join(x.name for x in self.params)})"
