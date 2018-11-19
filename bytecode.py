@@ -32,6 +32,9 @@ class BB(ABC):
     def successors(self) -> Iterable[BB]:
         return []
 
+    def format_stats(self, stats: Stats) -> str:
+        raise NotImplementedError("format_stats")
+
 
 @dataclass(frozen=True)
 class Var(Parameter):
@@ -77,10 +80,19 @@ class BoolLit(Parameter):
         return f"'{self.value}"
 
 
+@dataclass
+class Stats:
+    inst_type_count: Counter[type] = field(default_factory=Counter)
+    block_count: Counter[int] = field(default_factory=Counter)
+    inst_count: Counter[int] = field(default_factory=Counter)
+    taken_count: Counter[int] = field(default_factory=Counter)
+    function_count: Counter[int] = field(default_factory=Counter)
+
+
 class EvalEnv:
     _local_env: Dict[Var, Value]
     _global_env: Dict[SSym, Value]
-    stats: Counter[type]
+    stats: Stats
 
     def __init__(self,
                  local_env: Optional[Dict[Var, Value]] = None,
@@ -93,12 +105,12 @@ class EvalEnv:
             self._global_env = {}
         else:
             self._global_env = global_env
-        self.stats = Counter()
+        self.stats = Stats()
 
     def copy(self) -> EvalEnv:
         """Return a shallow copy of the environment."""
         env = EvalEnv(self._local_env.copy(), self._global_env)
-        env.stats = self.stats.copy()
+        env.stats = self.stats
         return env
 
     def __getitem__(self, key: Parameter) -> Value:
@@ -450,22 +462,33 @@ class BasicBlock(BB):
 
     def __str__(self) -> str:
         return f"{self.name}:\n" + "\n".join(
-            "  " + str(i) for i in self.instructions
+            f"  {i}" for i in self.instructions
+        )
+
+    def format_stats(self, stats: Stats) -> str:
+        return f"{stats.block_count[id(self)]:>8} {self.name}:\n" + "\n".join(
+            f"{stats.inst_count[id(i)]:>8} "
+            f"  {str(i):<40} "
+            f"""{f'(taken {stats.taken_count[id(i)]})'
+                  if stats.taken_count[id(i)] else ''}"""
+            for i in self.instructions
         )
 
     def add_inst(self, inst: Inst) -> None:
         self.instructions.append(inst)
 
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, BB]:
-        env.stats[type(self)] += 1
+        env.stats.block_count[id(self)] += 1
         for inst in self.instructions:
-            env.stats[type(inst)] += 1
+            env.stats.inst_type_count[type(inst)] += 1
+            env.stats.inst_count[id(inst)] += 1
             if isinstance(inst, CallInst):
                 yield from inst.run_call(env)
             else:
                 next_bb = inst.run(env)
             yield env.copy()
             if next_bb is not None:
+                env.stats.taken_count[id(inst)] += 1
                 break
         assert next_bb
         return next_bb
@@ -489,6 +512,7 @@ class Function:
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, Value]:
         assert all(p in env for p in self.params)
         block = self.start
+        env.stats.function_count[id(self)] += 1
         while True:
             if isinstance(block, BasicBlock):
                 block = yield from block.run(env)
@@ -513,9 +537,14 @@ class Function:
             visited |= set(map(id, blocks))
 
     def __str__(self) -> str:
-        return (f"function ({', '.join(x.name for x in self.params)})"
+        return (f"function (? {' '.join(x.name for x in self.params)})"
                 f" entry={self.start.name}\n"
                 + '\n\n'.join(str(b) for b in self.blocks()))
+
+    def format_stats(self, name: SSym, stats: Stats) -> str:
+        return (f"function ({name} {' '.join(x.name for x in self.params)})"
+                f" entry={self.start.name}\n"
+                + '\n\n'.join(b.format_stats(stats) for b in self.blocks()))
 
 
 T = TypeVar('T')

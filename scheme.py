@@ -25,8 +25,18 @@ def main() -> None:
 
     if args.stats:
         print('-----')
-        for inst, count in env.stats.items():
+        for inst, count in env.stats.inst_type_count.items():
             print(f"{inst.__name__:>10}: {count}")
+
+        for name, defn in env._global_env.items():
+            if name.name.startswith('__eval_expr'):
+                continue
+            assert isinstance(defn, sexp.SFunction)
+            assert defn.code is not None
+            count = env.stats.function_count[id(defn.code)]
+            if count:
+                print(defn.code.format_stats(name, env.stats))
+                print()
 
 
 def parse_args() -> argparse.Namespace:
