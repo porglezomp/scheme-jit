@@ -140,26 +140,14 @@ class BytecodeTestCast(unittest.TestCase):
 
         false.add_inst(bytecode.ReturnInst(BoolLit(SBool(False))))
 
-        class Generator:
-            def __init__(self, gen: Any):
-                self.gen = gen
-                self.value = None
-
-            def __iter__(self) -> Any:
-                self.value = yield from self.gen
-
-            def run(self) -> None:
-                for _ in self:
-                    pass
-
         env = bytecode.EvalEnv(local_env={Var("v0"): SNum(42)})
-        gen = Generator(is_list.run(env))
+        gen = bytecode.ResultGenerator(is_list.run(env))
         gen.run()
         self.assertEqual(gen.value, SBool(False))
 
         env = bytecode.EvalEnv(local_env={
             Var("v0"): SVect([SNum(42), SVect([SNum(69), SVect([])])])
         })
-        gen = Generator(is_list.run(env))
+        gen = bytecode.ResultGenerator(is_list.run(env))
         gen.run()
         self.assertEqual(gen.value, SBool(True))

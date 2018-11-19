@@ -34,7 +34,8 @@ We want some monomorphization or something to get into an interesting JIT optimi
 - `(pointer= a b)`
 - `(number= a b)`
 - `(symbol= a b)`
-- `(symbol< a b)`
+- `(number< a b)`
+- `(trap)`
 
 And arithmetic operators
 
@@ -42,7 +43,7 @@ And arithmetic operators
 
 - `=`, `!=`, `<`, `>`, `<=`, `>=`
 - `not`
-- `number?`, `symbol?`, `vector?`, `function?`, `pair?`, `nil?`
+- `number?`, `symbol?`, `vector?`, `function?`, `bool?`, `pair?`, `nil?`
 - `cons`, `car`, `cdr`
 
 ## Bytecode design

@@ -3,8 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import (Counter, Dict, Generator, Iterable, Iterator, List,
-                    Optional, Set)
+from typing import (Any, Counter, Dict, Generator, Generic, Iterable, Iterator,
+                    List, Optional, Set, TypeVar)
 
 import scheme
 from errors import Trap
@@ -324,7 +324,7 @@ class CallInst(Inst):
             raise NotImplementedError("JIT compiling functions!")
         func_code = func.code
         func_env = env.copy()
-        assert len(func_code.params)
+        assert len(func_code.params) == len(self.args)
         func_env._local_env = {
             name: env[arg] for name, arg in zip(func_code.params, self.args)
         }
@@ -422,6 +422,26 @@ class TrapInst(Inst):
 
 
 @dataclass
+class TraceInst(Inst):
+    value: Parameter
+
+    def run(self, env: EvalEnv) -> None:
+        print(env[self.value])
+
+    def __str__(self) -> str:
+        return f"trace {self.value}"
+
+
+@dataclass
+class BreakpointInst(Inst):
+    def run(self, env: EvalEnv) -> None:
+        breakpoint()
+
+    def __str__(self) -> str:
+        return f"breakpoint"
+
+
+@dataclass
 class BasicBlock(BB):
     name: str
     instructions: List[Inst] = field(default_factory=list)
@@ -439,7 +459,8 @@ class BasicBlock(BB):
         for inst in self.instructions:
             if isinstance(inst, CallInst):
                 yield from inst.run_call(env)
-            next_bb = inst.run(env)
+            else:
+                next_bb = inst.run(env)
             yield env.copy()
             if next_bb is not None:
                 break
@@ -492,3 +513,23 @@ class Function:
         return (f"function ({', '.join(x.name for x in self.params)})"
                 f" entry={self.start.name}\n"
                 + '\n\n'.join(str(b) for b in self.blocks()))
+
+
+T = TypeVar('T')
+
+
+class ResultGenerator(Generic[T]):
+    """A class to get the result from running a generator."""
+    gen: Generator[Any, Any, T]
+    value: Optional[T]
+
+    def __init__(self, gen: Generator[Any, Any, T]):
+        self.gen = gen
+        self.value = None
+
+    def __iter__(self) -> Any:
+        self.value = yield from self.gen
+
+    def run(self) -> None:
+        for _ in self:
+            pass
