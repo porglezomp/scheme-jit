@@ -13,7 +13,7 @@ class EmitExpressionTestCase(unittest.TestCase):
         bb_names = emit_IR.name_generator('bb')
         self.bb = bytecode.BasicBlock(next(bb_names))
         self.expr_emitter = emit_IR.ExpressionEmitter(
-            self.bb, bb_names, emit_IR.name_generator('var'), {}, {})
+            self.bb, bb_names, emit_IR.name_generator('v'), {}, {})
 
     def test_emit_int_literal(self) -> None:
         prog = sexp.parse('42')
@@ -42,7 +42,7 @@ class EmitExpressionTestCase(unittest.TestCase):
 
         expected_instrs = [
             bytecode.AllocInst(
-                bytecode.Var('var0'),
+                bytecode.Var('v0'),
                 bytecode.NumLit(sexp.SNum(0))
             )
         ]
@@ -53,7 +53,7 @@ class EmitExpressionTestCase(unittest.TestCase):
         prog = sexp.parse('[1 2]')
         self.expr_emitter.visit(prog)
 
-        arr_var = bytecode.Var('var0')
+        arr_var = bytecode.Var('v0')
         expected_instrs = [
             bytecode.AllocInst(
                 arr_var,
@@ -77,7 +77,7 @@ class EmitExpressionTestCase(unittest.TestCase):
         prog = sexp.parse("'()")
         self.expr_emitter.visit(prog)
 
-        nil_var = bytecode.Var('var0')
+        nil_var = bytecode.Var('v0')
         expected_instrs = [
             bytecode.AllocInst(
                 nil_var, bytecode.NumLit(sexp.SNum(0))
@@ -90,9 +90,9 @@ class EmitExpressionTestCase(unittest.TestCase):
         prog = sexp.parse("'(1 spam)")
         self.expr_emitter.visit(prog)
 
-        nil_var = bytecode.Var('var0')
-        second_pair = bytecode.Var('var1')
-        first_pair = bytecode.Var('var2')
+        nil_var = bytecode.Var('v0')
+        second_pair = bytecode.Var('v1')
+        first_pair = bytecode.Var('v2')
         expected_instrs = [
             bytecode.AllocInst(
                 nil_var, bytecode.NumLit(sexp.SNum(0))
@@ -131,11 +131,11 @@ class EmitExpressionTestCase(unittest.TestCase):
         prog = sexp.parse('(number? 1)')
         self.expr_emitter.visit(prog)
 
-        func_var = bytecode.Var('var0')
-        typeof_var = bytecode.Var('__typeof')
-        is_function_var = bytecode.Var('__is_func')
-        arity_var = bytecode.Var('__arity')
-        correct_arity_var = bytecode.Var('__correct_arity')
+        func_var = bytecode.Var('v0')
+        typeof_var = bytecode.Var('v1')
+        is_function_var = bytecode.Var('v2')
+        arity_var = bytecode.Var('v3')
+        correct_arity_var = bytecode.Var('v4')
         expected_instrs = [
             bytecode.LookupInst(
                 func_var, bytecode.SymLit(sexp.SSym('number?'))
@@ -150,7 +150,7 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.BrnInst(
                 is_function_var,
                 bytecode.BasicBlock(
-                    '__non_function_trap',
+                    'non_function',
                     [bytecode.TrapInst('Attempted to call a non-function')])
             ),
 
@@ -162,13 +162,13 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.BrnInst(
                 correct_arity_var,
                 bytecode.BasicBlock(
-                    '__wrong_arity_trap',
+                    'wrong_arity',
                     [bytecode.TrapInst(
                         'Call with the wrong number of arguments')])
             ),
 
             bytecode.CallInst(
-                bytecode.Var('var1'),
+                bytecode.Var('v5'),
                 func_var,
                 [bytecode.NumLit(sexp.SNum(1))]
             ),
@@ -181,10 +181,10 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.expr_emitter.local_env[sexp.SSym('local_var')] = lambda_var
         self.expr_emitter.visit(prog)
 
-        typeof_var = bytecode.Var('__typeof')
-        is_function_var = bytecode.Var('__is_func')
-        arity_var = bytecode.Var('__arity')
-        correct_arity_var = bytecode.Var('__correct_arity')
+        typeof_var = bytecode.Var('v0')
+        is_function_var = bytecode.Var('v1')
+        arity_var = bytecode.Var('v2')
+        correct_arity_var = bytecode.Var('v3')
         expected_instrs = [
             bytecode.TypeofInst(typeof_var, lambda_var),
             bytecode.BinopInst(
@@ -194,7 +194,7 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.BrnInst(
                 is_function_var,
                 bytecode.BasicBlock(
-                    '__non_function_trap',
+                    'non_function',
                     [bytecode.TrapInst('Attempted to call a non-function')])
             ),
 
@@ -206,13 +206,13 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.BrnInst(
                 correct_arity_var,
                 bytecode.BasicBlock(
-                    '__wrong_arity_trap',
+                    'wrong_arity',
                     [bytecode.TrapInst(
                         'Call with the wrong number of arguments')])
             ),
 
             bytecode.CallInst(
-                bytecode.Var('var0'),
+                bytecode.Var('v4'),
                 lambda_var,
                 [bytecode.NumLit(sexp.SNum(42))]
             )
@@ -234,11 +234,11 @@ class EmitExpressionTestCase(unittest.TestCase):
             )
         )
 
-        lambda_lookup_var = bytecode.Var('var0')
-        typeof_var = bytecode.Var('__typeof')
-        is_function_var = bytecode.Var('__is_func')
-        arity_var = bytecode.Var('__arity')
-        correct_arity_var = bytecode.Var('__correct_arity')
+        lambda_lookup_var = bytecode.Var('v0')
+        typeof_var = bytecode.Var('v1')
+        is_function_var = bytecode.Var('v2')
+        arity_var = bytecode.Var('v3')
+        correct_arity_var = bytecode.Var('v4')
         expected_instrs = [
             bytecode.LookupInst(
                 lambda_lookup_var, bytecode.SymLit(sexp.SSym('__lambda0'))
@@ -252,7 +252,7 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.BrnInst(
                 is_function_var,
                 bytecode.BasicBlock(
-                    '__non_function_trap',
+                    'non_function',
                     [bytecode.TrapInst('Attempted to call a non-function')])
             ),
 
@@ -264,13 +264,13 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.BrnInst(
                 correct_arity_var,
                 bytecode.BasicBlock(
-                    '__wrong_arity_trap',
+                    'wrong_arity',
                     [bytecode.TrapInst(
                         'Call with the wrong number of arguments')])
             ),
 
             bytecode.CallInst(
-                bytecode.Var('var1'),
+                bytecode.Var('v5'),
                 lambda_lookup_var,
                 [bytecode.NumLit(sexp.SNum(42))]
             )
@@ -287,7 +287,7 @@ class EmitExpressionTestCase(unittest.TestCase):
         prog = sexp.parse('(if true 42 43)')
         self.expr_emitter.visit(prog)
 
-        result_var = bytecode.Var('var0')
+        result_var = bytecode.Var('v0')
         self.assertEqual(result_var, self.expr_emitter.result)
         self.assertIsNot(
             self.expr_emitter.parent_block, self.expr_emitter.end_block)
@@ -332,11 +332,11 @@ class EmitExpressionTestCase(unittest.TestCase):
         prog = sexp.parse('(if true (if false 42 43) (if true 44 45))')
         self.expr_emitter.visit(prog)
 
-        outer_result_var = bytecode.Var('var0')
+        outer_result_var = bytecode.Var('v0')
 
         outer_end_block = bytecode.BasicBlock('bb9')
 
-        then_result_var = bytecode.Var('var1')
+        then_result_var = bytecode.Var('v1')
         then_end_block = bytecode.BasicBlock(
             'bb5',
             [
@@ -363,7 +363,7 @@ class EmitExpressionTestCase(unittest.TestCase):
             ]
         )
 
-        else_result_var = bytecode.Var('var2')
+        else_result_var = bytecode.Var('v2')
         else_end_block = bytecode.BasicBlock(
             'bb8',
             [
@@ -430,7 +430,7 @@ class EmitExpressionTestCase(unittest.TestCase):
 
         end_block = bytecode.BasicBlock('bb6')
 
-        body_result = bytecode.Var('var1')
+        body_result = bytecode.Var('v1')
 
         body_then_block = bytecode.BasicBlock(
             'bb4',
@@ -452,7 +452,7 @@ class EmitExpressionTestCase(unittest.TestCase):
             ]
         )
 
-        condition_result = bytecode.Var('var0')
+        condition_result = bytecode.Var('v0')
         condition_end_block = bytecode.BasicBlock(
             'bb3',
             [
@@ -501,7 +501,13 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.expr_emitter.visit(prog)
 
         end_block = bytecode.BasicBlock('bb3')
-        conditional_result = bytecode.Var('var1')
+        func_var = bytecode.Var('v0')
+        typeof_var = bytecode.Var('v1')
+        is_function_var = bytecode.Var('v2')
+        arity_var = bytecode.Var('v3')
+        correct_arity_var = bytecode.Var('v4')
+        conditional_result = bytecode.Var('v5')
+        call_result = bytecode.Var('v6')
 
         then_block = bytecode.BasicBlock(
             'bb1',
@@ -522,12 +528,6 @@ class EmitExpressionTestCase(unittest.TestCase):
                 bytecode.JmpInst(end_block)
             ]
         )
-
-        func_var = bytecode.Var('var0')
-        typeof_var = bytecode.Var('__typeof')
-        is_function_var = bytecode.Var('__is_func')
-        arity_var = bytecode.Var('__arity')
-        correct_arity_var = bytecode.Var('__correct_arity')
         entry_block = bytecode.BasicBlock(
             'bb0',
             [
@@ -542,7 +542,7 @@ class EmitExpressionTestCase(unittest.TestCase):
                 bytecode.BrnInst(
                     is_function_var,
                     bytecode.BasicBlock(
-                        '__non_function_trap',
+                        'non_function',
                         [bytecode.TrapInst(
                             'Attempted to call a non-function')])
                 ),
@@ -555,7 +555,7 @@ class EmitExpressionTestCase(unittest.TestCase):
                 bytecode.BrnInst(
                     correct_arity_var,
                     bytecode.BasicBlock(
-                        '__wrong_arity_trap',
+                        'wrong_arity',
                         [bytecode.TrapInst(
                             'Call with the wrong number of arguments')])
                 ),
@@ -567,7 +567,6 @@ class EmitExpressionTestCase(unittest.TestCase):
             ]
         )
 
-        call_result = bytecode.Var('var2')
         end_block.add_inst(
             bytecode.CallInst(call_result, func_var, [conditional_result]))
 
@@ -585,7 +584,12 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.expr_emitter.visit(prog)
 
         end_block = bytecode.BasicBlock('bb3')
-        conditional_result = bytecode.Var('var0')
+        conditional_result = bytecode.Var('v0')
+        typeof_var = bytecode.Var('v1')
+        is_function_var = bytecode.Var('v2')
+        arity_var = bytecode.Var('v3')
+        correct_arity_var = bytecode.Var('v4')
+        call_result = bytecode.Var('v5')
 
         then_block = bytecode.BasicBlock(
             'bb1',
@@ -617,11 +621,6 @@ class EmitExpressionTestCase(unittest.TestCase):
             ]
         )
 
-        call_result = bytecode.Var('var1')
-        typeof_var = bytecode.Var('__typeof')
-        is_function_var = bytecode.Var('__is_func')
-        arity_var = bytecode.Var('__arity')
-        correct_arity_var = bytecode.Var('__correct_arity')
         call_instrs = [
             bytecode.TypeofInst(typeof_var, conditional_result),
             bytecode.BinopInst(
@@ -631,7 +630,7 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.BrnInst(
                 is_function_var,
                 bytecode.BasicBlock(
-                    '__non_function_trap',
+                    'non_function',
                     [bytecode.TrapInst('Attempted to call a non-function')])
             ),
 
@@ -643,7 +642,7 @@ class EmitExpressionTestCase(unittest.TestCase):
             bytecode.BrnInst(
                 correct_arity_var,
                 bytecode.BasicBlock(
-                    '__wrong_arity_trap',
+                    'wrong_arity',
                     [bytecode.TrapInst(
                         'Call with the wrong number of arguments')])
             ),
@@ -718,7 +717,7 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         prog = sexp.parse('(define (func) (lambda (spam) spam))')
         self.function_emitter.visit(prog)
 
-        func_ret_var = bytecode.Var('var0')
+        func_ret_var = bytecode.Var('v0')
         expected_func = bytecode.Function(
             [],
             bytecode.BasicBlock(
