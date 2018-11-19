@@ -203,6 +203,9 @@ class ExpressionEmitter(Visitor):
             self.local_env, self.global_env)
         func_expr_emitter.visit(call.func)
 
+        self._add_is_function_check(
+            func_expr_emitter.result, func_expr_emitter.end_block)
+
         args: List[bytecode.Parameter] = []
         arg_emitter: Optional[ExpressionEmitter] = None
         self.end_block = func_expr_emitter.end_block
@@ -225,6 +228,25 @@ class ExpressionEmitter(Visitor):
             arg_emitter.end_block.add_inst(call_instr)
 
         self.result = call_result_var
+
+    def _add_is_function_check(
+            self, function_expr: bytecode.Parameter,
+            add_to_block: bytecode.BasicBlock) -> None:
+        typeof_var = bytecode.Var('__typeof')
+        typeof_instr = bytecode.TypeofInst(
+            typeof_var, function_expr)
+        is_function_var = bytecode.Var('__is_func')
+        is_function_instr = bytecode.BinopInst(
+            is_function_var, bytecode.Binop.SYM_EQ,
+            typeof_var, bytecode.SymLit(sexp.SSym('function'))
+        )
+        trap_block = bytecode.BasicBlock(
+            '__non_function_trap',
+            [bytecode.TrapInst('Attempted to call a non-function')])
+        branch_instr = bytecode.BrnInst(is_function_var, trap_block)
+
+        for instr in [typeof_instr, is_function_instr, branch_instr]:
+            add_to_block.add_inst(instr)
 
 
 def name_generator(prefix: str) -> Iterator[str]:

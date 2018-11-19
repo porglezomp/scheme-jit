@@ -132,17 +132,32 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.expr_emitter.visit(prog)
 
         func_var = bytecode.Var('var0')
+        typeof_var = bytecode.Var('__typeof')
+        is_function_var = bytecode.Var('__is_func')
         expected_instrs = [
             bytecode.LookupInst(
                 func_var, bytecode.SymLit(sexp.SSym('number?'))
             ),
+
+            bytecode.TypeofInst(typeof_var, func_var),
+            bytecode.BinopInst(
+                is_function_var, bytecode.Binop.SYM_EQ,
+                typeof_var, bytecode.SymLit(sexp.SSym('function'))
+            ),
+
+            bytecode.BrnInst(
+                is_function_var,
+                bytecode.BasicBlock(
+                    '__non_function_trap',
+                    [bytecode.TrapInst('Attempted to call a non-function')])
+            ),
+
             bytecode.CallInst(
                 bytecode.Var('var1'),
                 func_var,
                 [bytecode.NumLit(sexp.SNum(1))]
-            )
+            ),
         ]
-
         self.assertEqual(expected_instrs, self.bb.instructions)
 
     def test_emit_local_var_function_call(self) -> None:
@@ -151,7 +166,21 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.expr_emitter.local_env[sexp.SSym('local_var')] = lambda_var
         self.expr_emitter.visit(prog)
 
+        typeof_var = bytecode.Var('__typeof')
+        is_function_var = bytecode.Var('__is_func')
         expected_instrs = [
+            bytecode.TypeofInst(typeof_var, lambda_var),
+            bytecode.BinopInst(
+                is_function_var, bytecode.Binop.SYM_EQ,
+                typeof_var, bytecode.SymLit(sexp.SSym('function'))
+            ),
+            bytecode.BrnInst(
+                is_function_var,
+                bytecode.BasicBlock(
+                    '__non_function_trap',
+                    [bytecode.TrapInst('Attempted to call a non-function')])
+            ),
+
             bytecode.CallInst(
                 bytecode.Var('var0'),
                 lambda_var,
@@ -176,10 +205,25 @@ class EmitExpressionTestCase(unittest.TestCase):
         )
 
         lambda_lookup_var = bytecode.Var('var0')
+        typeof_var = bytecode.Var('__typeof')
+        is_function_var = bytecode.Var('__is_func')
         expected_instrs = [
             bytecode.LookupInst(
                 lambda_lookup_var, bytecode.SymLit(sexp.SSym('__lambda0'))
             ),
+
+            bytecode.TypeofInst(typeof_var, lambda_lookup_var),
+            bytecode.BinopInst(
+                is_function_var, bytecode.Binop.SYM_EQ,
+                typeof_var, bytecode.SymLit(sexp.SSym('function'))
+            ),
+            bytecode.BrnInst(
+                is_function_var,
+                bytecode.BasicBlock(
+                    '__non_function_trap',
+                    [bytecode.TrapInst('Attempted to call a non-function')])
+            ),
+
             bytecode.CallInst(
                 bytecode.Var('var1'),
                 lambda_lookup_var,
@@ -435,12 +479,27 @@ class EmitExpressionTestCase(unittest.TestCase):
         )
 
         func_var = bytecode.Var('var0')
+        typeof_var = bytecode.Var('__typeof')
+        is_function_var = bytecode.Var('__is_func')
         entry_block = bytecode.BasicBlock(
             'bb0',
             [
                 bytecode.LookupInst(
                     func_var, bytecode.SymLit(sexp.SSym('number?'))
                 ),
+                bytecode.TypeofInst(typeof_var, func_var),
+                bytecode.BinopInst(
+                    is_function_var, bytecode.Binop.SYM_EQ,
+                    typeof_var, bytecode.SymLit(sexp.SSym('function'))
+                ),
+                bytecode.BrnInst(
+                    is_function_var,
+                    bytecode.BasicBlock(
+                        '__non_function_trap',
+                        [bytecode.TrapInst(
+                            'Attempted to call a non-function')])
+                ),
+
                 bytecode.BrInst(
                     bytecode.BoolLit(sexp.SBool(True)), then_block
                 ),
@@ -450,8 +509,7 @@ class EmitExpressionTestCase(unittest.TestCase):
 
         call_result = bytecode.Var('var2')
         end_block.add_inst(
-            bytecode.CallInst(call_result, func_var, [conditional_result])
-        )
+            bytecode.CallInst(call_result, func_var, [conditional_result]))
 
         self.assertEqual(entry_block, self.expr_emitter.parent_block)
         self.assertEqual(end_block, self.expr_emitter.end_block)
@@ -500,9 +558,26 @@ class EmitExpressionTestCase(unittest.TestCase):
         )
 
         call_result = bytecode.Var('var1')
-        end_block.add_inst(
+        typeof_var = bytecode.Var('__typeof')
+        is_function_var = bytecode.Var('__is_func')
+        call_instrs = [
+            bytecode.TypeofInst(typeof_var, conditional_result),
+            bytecode.BinopInst(
+                is_function_var, bytecode.Binop.SYM_EQ,
+                typeof_var, bytecode.SymLit(sexp.SSym('function'))
+            ),
+            bytecode.BrnInst(
+                is_function_var,
+                bytecode.BasicBlock(
+                    '__non_function_trap',
+                    [bytecode.TrapInst('Attempted to call a non-function')])
+            ),
+
             bytecode.CallInst(call_result, conditional_result, [])
-        )
+        ]
+
+        for instr in call_instrs:
+            end_block.add_inst(instr)
 
         self.assertEqual(entry_block, self.expr_emitter.parent_block)
         self.assertEqual(end_block, self.expr_emitter.end_block)
