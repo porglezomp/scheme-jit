@@ -128,7 +128,7 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.assertEqual(expected_instrs, self.bb.instructions)
 
     def test_emit_global_function_call(self) -> None:
-        prog = scheme.parse('(number? 1)')
+        prog = sexp.parse('(number? 1)')
         self.expr_emitter.visit(prog)
 
         func_var = bytecode.Var('var0')
@@ -408,7 +408,7 @@ class EmitExpressionTestCase(unittest.TestCase):
         self.assertEqual(body_result, self.expr_emitter.result)
 
     def test_conditional_in_function_call_args(self) -> None:
-        prog = scheme.parse('(number? (if true 42 false))')
+        prog = sexp.parse('(number? (if true 42 false))')
         self.expr_emitter.visit(prog)
 
         end_block = bytecode.BasicBlock('bb3')

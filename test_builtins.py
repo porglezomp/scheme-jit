@@ -4,7 +4,7 @@ from typing import Dict
 import errors
 import runner
 from runner import run
-from scheme import SBool, SNum, SSym, SVect, Value
+from sexp import SBool, SNum, SSym, SVect, Value
 
 
 class BuiltinsTestCase(unittest.TestCase):

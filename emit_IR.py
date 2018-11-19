@@ -7,7 +7,7 @@ from visitor import Visitor
 
 
 class FunctionEmitter(Visitor):
-    def __init__(self, global_env: Dict[scheme.SSym, scheme.Value]) -> None:
+    def __init__(self, global_env: Dict[sexp.SSym, sexp.Value]) -> None:
         self.global_env = global_env
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
@@ -51,8 +51,8 @@ class ExpressionEmitter(Visitor):
     def __init__(self, parent_block: bytecode.BasicBlock,
                  bb_names: Iterator[str],
                  var_names: Iterator[str],
-                 local_env: Dict[scheme.SSym, bytecode.Var],
-                 global_env: Dict[scheme.SSym, scheme.Value],
+                 local_env: Dict[sexp.SSym, bytecode.Var],
+                 global_env: Dict[sexp.SSym, sexp.Value],
                  quoted: bool = False) -> None:
         self.parent_block = parent_block
         self.end_block = parent_block
