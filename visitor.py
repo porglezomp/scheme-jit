@@ -1,7 +1,7 @@
 from typing import List, Union
 
-from scheme import (Nil, Quote, SBool, SCall, SConditional, SExp, SFunction,
-                    SNum, SPair, SSym, SVect)
+from sexp import (Nil, Quote, SBool, SCall, SConditional, SExp, SFunction,
+                  SNum, SPair, SSym, SVect)
 
 
 class Visitor:

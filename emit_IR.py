@@ -1,17 +1,17 @@
 from typing import Dict, Iterator, List, Optional, cast
 
 import bytecode
-import scheme
+import sexp
 from errors import EnvBindingNotFound
 from visitor import Visitor
 
 
 class FunctionEmitter(Visitor):
-    def __init__(self, global_env: Dict[scheme.SSym, scheme.Value]) -> None:
+    def __init__(self, global_env: Dict[sexp.SSym, sexp.Value]) -> None:
         self.global_env = global_env
 
-    def visit_SFunction(self, func: scheme.SFunction) -> None:
-        local_env: Dict[scheme.SSym, bytecode.Var] = {}
+    def visit_SFunction(self, func: sexp.SFunction) -> None:
+        local_env: Dict[sexp.SSym, bytecode.Var] = {}
         for param in func.params:
             local_env[param] = bytecode.Var(param.name)
 
@@ -51,8 +51,8 @@ class ExpressionEmitter(Visitor):
     def __init__(self, parent_block: bytecode.BasicBlock,
                  bb_names: Iterator[str],
                  var_names: Iterator[str],
-                 local_env: Dict[scheme.SSym, bytecode.Var],
-                 global_env: Dict[scheme.SSym, scheme.Value],
+                 local_env: Dict[sexp.SSym, bytecode.Var],
+                 global_env: Dict[sexp.SSym, sexp.Value],
                  quoted: bool = False) -> None:
         self.parent_block = parent_block
         self.end_block = parent_block
@@ -62,7 +62,7 @@ class ExpressionEmitter(Visitor):
         self.global_env = global_env
         self.quoted = quoted
 
-    def visit_SFunction(self, func: scheme.SFunction) -> None:
+    def visit_SFunction(self, func: sexp.SFunction) -> None:
         assert func.is_lambda, 'Nested named functions not supported'
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
@@ -76,7 +76,7 @@ class ExpressionEmitter(Visitor):
         self.parent_block.add_inst(lookup_lambda_instr)
         self.result = lambda_var
 
-    def visit_SConditional(self, conditional: scheme.SConditional) -> None:
+    def visit_SConditional(self, conditional: sexp.SConditional) -> None:
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
         test_emitter = ExpressionEmitter(
@@ -118,13 +118,13 @@ class ExpressionEmitter(Visitor):
 
         self.result = result_var
 
-    def visit_SNum(self, num: scheme.SNum) -> None:
+    def visit_SNum(self, num: sexp.SNum) -> None:
         self.result = bytecode.NumLit(num)
 
-    def visit_SBool(self, sbool: scheme.SBool) -> None:
+    def visit_SBool(self, sbool: sexp.SBool) -> None:
         self.result = bytecode.BoolLit(sbool)
 
-    def visit_SSym(self, sym: scheme.SSym) -> None:
+    def visit_SSym(self, sym: sexp.SSym) -> None:
         if self.quoted:
             self.result = bytecode.SymLit(sym)
         elif sym in self.local_env:
@@ -135,10 +135,10 @@ class ExpressionEmitter(Visitor):
             self.parent_block.add_inst(lookup_instr)
             self.result = dest_var
 
-    def visit_SVect(self, vect: scheme.SVect) -> None:
+    def visit_SVect(self, vect: sexp.SVect) -> None:
         var = bytecode.Var(next(self.var_names))
         instr = bytecode.AllocInst(
-            var, bytecode.NumLit(scheme.SNum(len(vect.items))))
+            var, bytecode.NumLit(sexp.SNum(len(vect.items))))
         self.parent_block.add_inst(instr)
         self.result = var
 
@@ -151,22 +151,22 @@ class ExpressionEmitter(Visitor):
             parent_block = expr_emitter.end_block
 
             store = bytecode.StoreInst(
-                var, bytecode.NumLit(scheme.SNum(i)), expr_emitter.result)
+                var, bytecode.NumLit(sexp.SNum(i)), expr_emitter.result)
             parent_block.add_inst(store)
 
-    def visit_Quote(self, quote: scheme.Quote) -> None:
-        if isinstance(quote.expr, scheme.SSym):
+    def visit_Quote(self, quote: sexp.Quote) -> None:
+        if isinstance(quote.expr, sexp.SSym):
             self.quoted = True
             super().visit(quote.expr)
             return
 
-        is_list = isinstance(quote.expr, scheme.SPair) and quote.expr.is_list
-        assert quote.expr is scheme.Nil or is_list
+        is_list = isinstance(quote.expr, sexp.SPair) and quote.expr.is_list
+        assert quote.expr is sexp.Nil or is_list
 
-        quoted_exprs = list(cast(scheme.SList, quote.expr))
+        quoted_exprs = list(cast(sexp.SList, quote.expr))
         nil_var = bytecode.Var(next(self.var_names))
         nil_alloc = bytecode.AllocInst(
-            nil_var, bytecode.NumLit(scheme.SNum(0)))
+            nil_var, bytecode.NumLit(sexp.SNum(0)))
 
         cdr = nil_var
         self.parent_block.add_inst(nil_alloc)
@@ -174,7 +174,7 @@ class ExpressionEmitter(Visitor):
         for expr in reversed(quoted_exprs):
             pair_var = bytecode.Var(next(self.var_names))
             pair_alloc = bytecode.AllocInst(
-                pair_var, bytecode.NumLit(scheme.SNum(2)))
+                pair_var, bytecode.NumLit(sexp.SNum(2)))
             self.parent_block.add_inst(pair_alloc)
 
             expr_emitter = ExpressionEmitter(
@@ -183,11 +183,11 @@ class ExpressionEmitter(Visitor):
             expr_emitter.visit(expr)
 
             store_car = bytecode.StoreInst(
-                pair_var, bytecode.NumLit(scheme.SNum(0)), expr_emitter.result)
+                pair_var, bytecode.NumLit(sexp.SNum(0)), expr_emitter.result)
             self.parent_block.add_inst(store_car)
 
             store_cdr = bytecode.StoreInst(
-                pair_var, bytecode.NumLit(scheme.SNum(1)), cdr
+                pair_var, bytecode.NumLit(sexp.SNum(1)), cdr
             )
             self.parent_block.add_inst(store_cdr)
 
@@ -195,7 +195,7 @@ class ExpressionEmitter(Visitor):
 
         self.result = cdr
 
-    def visit_SCall(self, call: scheme.SCall) -> None:
+    def visit_SCall(self, call: sexp.SCall) -> None:
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
         func_expr_emitter = ExpressionEmitter(

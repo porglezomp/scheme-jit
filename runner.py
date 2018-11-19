@@ -2,10 +2,10 @@ from typing import Dict, List, Optional
 
 import bytecode
 import emit_IR
-import scheme
+import sexp
 from bytecode import BasicBlock, Binop, Function, Inst, Var
 from emit_IR import FunctionEmitter
-from scheme import Nil, SExp, SFunction, SSym, Value
+from sexp import Nil, SExp, SFunction, SSym, Value
 
 
 def add_intrinsics(env: Dict[SSym, Value]) -> None:
@@ -37,10 +37,10 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
         SSym('inst/trap'), [], None,
         bytecode.TrapInst("(trap)"))
     env[SSym('inst/trace')] = inst_function(
-        SSym('inst/trace'), [Var('x')], bytecode.NumLit(scheme.SNum(0)),
+        SSym('inst/trace'), [Var('x')], bytecode.NumLit(sexp.SNum(0)),
         bytecode.TraceInst(Var('x')))
     env[SSym('inst/breakpoint')] = inst_function(
-        SSym('inst/breakpoint'), [], bytecode.NumLit(scheme.SNum(0)),
+        SSym('inst/breakpoint'), [], bytecode.NumLit(sexp.SNum(0)),
         bytecode.BreakpointInst())
     # Memory operations
     env[SSym('inst/alloc')] = inst_function(
@@ -69,7 +69,7 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
 
 def add_builtins(env: Dict[SSym, Value]) -> None:
     """Add builtins to the environment."""
-    code = scheme.parse("""
+    code = sexp.parse("""
     (define (trap) (inst/trap))
     (define (trace x) (inst/trace x))
     (define (breakpoint) (inst/breakpoint))
@@ -163,7 +163,7 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
 
 def add_prelude(env: Dict[SSym, Value]) -> None:
     """Add prelude functions to the environment."""
-    code = scheme.parse("""
+    code = sexp.parse("""
     ;; The loop body for vector=, not to be used on its own
     (define (vector=/recur x y n end)
       (if (= n end)
@@ -213,16 +213,16 @@ eval_names = emit_IR.name_generator('__eval_expr')
 def run_code(env: Dict[SSym, Value], code: SExp) -> Value:
     """Run a piece of code in an environment, returning its result."""
     emitter = FunctionEmitter(env)
-    if isinstance(code, scheme.SFunction):
+    if isinstance(code, sexp.SFunction):
         emitter.visit(code)
         return env[code.name]
     else:
         name = SSym(f'{next(eval_names)}')
-        code = scheme.SFunction(
-            name, [], scheme.to_slist([code]), is_lambda=True)
+        code = sexp.SFunction(
+            name, [], sexp.to_slist([code]), is_lambda=True)
         emitter.visit(code)
         function = env[name]
-        assert isinstance(function, scheme.SFunction)
+        assert isinstance(function, sexp.SFunction)
         assert function.code is not None
         eval_env = bytecode.EvalEnv({}, env)
         gen = bytecode.ResultGenerator(function.code.run(eval_env))
@@ -244,8 +244,8 @@ def run(env: Dict[SSym, Value], text: str) -> Value:
     >>> run(env, '(> (vector-length (cons 1 [])) 3)')
     SBool(value=False)
     """
-    code = scheme.parse(text)
-    result: Value = scheme.SVect([])
+    code = sexp.parse(text)
+    result: Value = sexp.SVect([])
     for part in code:
         result = run_code(env, part)
     return result
