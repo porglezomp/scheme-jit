@@ -307,6 +307,21 @@ class LengthInst(Inst):
 
 
 @dataclass
+class ArityInst(Inst):
+    dest: Var
+    func: Parameter
+
+    def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
+        func = env[self.func]
+        assert isinstance(func, sexp.SFunction), func
+        env[self.dest] = SNum(len(func.params))
+
+    def __str__(self) -> str:
+        return f"{self.dest} = arity {self.func}"
+
+
+@dataclass
 class CallInst(Inst):
     dest: Var
     func: Parameter
@@ -404,6 +419,7 @@ class ReturnInst(Inst):
     ret: Parameter
 
     def run(self, env: EvalEnv) -> Optional[BB]:
+        env.stats[type(self)] += 1
         return ReturnBlock(f"return {self.ret}", self.ret)
 
     def __str__(self) -> str:
@@ -415,6 +431,7 @@ class TrapInst(Inst):
     message: str
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         raise Trap(self.message)
 
     def __str__(self) -> str:
@@ -426,6 +443,7 @@ class TraceInst(Inst):
     value: Parameter
 
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         print(env[self.value])
 
     def __str__(self) -> str:
@@ -435,6 +453,7 @@ class TraceInst(Inst):
 @dataclass
 class BreakpointInst(Inst):
     def run(self, env: EvalEnv) -> None:
+        env.stats[type(self)] += 1
         breakpoint()
 
     def __str__(self) -> str:
