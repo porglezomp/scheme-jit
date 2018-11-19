@@ -1,6 +1,7 @@
 import unittest
 from typing import Dict
 
+import bytecode
 import errors
 import runner
 from runner import run
@@ -9,7 +10,7 @@ from sexp import SBool, SNum, SSym, SVect, Value
 
 class BuiltinsTestCase(unittest.TestCase):
     def test_intrinsics(self) -> None:
-        env: Dict[SSym, Value] = {}
+        env = bytecode.EvalEnv()
         runner.add_intrinsics(env)
 
         self.assertEqual(run(env, '(inst/typeof 42)'), SSym('number'))
@@ -41,7 +42,7 @@ class BuiltinsTestCase(unittest.TestCase):
         self.assertEqual(run(env, '(inst/number< -1 0)'), SBool(True))
 
     def test_builtins(self) -> None:
-        env: Dict[SSym, Value] = {}
+        env = bytecode.EvalEnv()
         runner.add_intrinsics(env)
         runner.add_builtins(env)
 
@@ -126,7 +127,7 @@ class BuiltinsTestCase(unittest.TestCase):
         )
 
     def test_prelude(self) -> None:
-        env: Dict[SSym, Value] = {}
+        env = bytecode.EvalEnv()
         runner.add_intrinsics(env)
         runner.add_builtins(env)
         runner.add_prelude(env)

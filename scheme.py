@@ -4,6 +4,7 @@ import argparse
 import sys
 from typing import Dict
 
+import bytecode
 import runner
 import sexp
 
@@ -16,7 +17,7 @@ def main() -> None:
         with open(args.filename) as f:
             prog_text = f.read()
 
-    env: Dict[sexp.SSym, sexp.Value] = {}
+    env = bytecode.EvalEnv()
     runner.add_intrinsics(env)
     runner.add_builtins(env)
     runner.add_prelude(env)
