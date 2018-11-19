@@ -25,9 +25,6 @@ def main() -> None:
 
     if args.stats:
         print('-----')
-        for inst, count in env.stats.inst_type_count.items():
-            print(f"{inst.__name__:>10}: {count}")
-
         for name, defn in env._global_env.items():
             if name.name.startswith('__eval_expr'):
                 continue
@@ -37,6 +34,9 @@ def main() -> None:
             if count:
                 print(defn.code.format_stats(name, env.stats))
                 print()
+        print('-----')
+        for inst, count in env.stats.inst_type_count.items():
+            print(f"{inst.__name__:>10}: {count}")
 
 
 def parse_args() -> argparse.Namespace:
