@@ -205,6 +205,9 @@ class ExpressionEmitter(Visitor):
 
         self._add_is_function_check(
             func_expr_emitter.result, func_expr_emitter.end_block)
+        self._add_arity_check(
+            func_expr_emitter.result, func_expr_emitter.end_block,
+            len(call.args))
 
         args: List[bytecode.Parameter] = []
         arg_emitter: Optional[ExpressionEmitter] = None
@@ -247,6 +250,21 @@ class ExpressionEmitter(Visitor):
 
         for instr in [typeof_instr, is_function_instr, branch_instr]:
             add_to_block.add_inst(instr)
+
+    def _add_arity_check(
+            self, function_expr: bytecode.Parameter,
+            add_to_block: bytecode.BasicBlock, arity: int) -> None:
+        arity_var = bytecode.Var('__arity')
+        add_to_block.add_inst(bytecode.ArityInst(arity_var, function_expr))
+        correct_arity_var = bytecode.Var('__correct_arity')
+        add_to_block.add_inst(bytecode.BinopInst(
+            correct_arity_var, bytecode.Binop.NUM_EQ,
+            arity_var, bytecode.NumLit(sexp.SNum(arity))
+        ))
+        trap_block = bytecode.BasicBlock(
+            '__wrong_arity_trap',
+            [bytecode.TrapInst('Call with the wrong number of arguments')])
+        add_to_block.add_inst(bytecode.BrnInst(correct_arity_var, trap_block))
 
 
 def name_generator(prefix: str) -> Iterator[str]:
