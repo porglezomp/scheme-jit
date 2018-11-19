@@ -23,10 +23,20 @@ def main() -> None:
     runner.add_prelude(env)
     print(runner.run(env, prog_text))
 
+    if args.stats:
+        print('-----')
+        for inst, count in env.stats.items():
+            print(f"{inst.__name__:>10}: {count}")
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument('filename')
+    parser.add_argument(
+        'filename',
+        help="the script to execute, or - for stdin")
+    parser.add_argument(
+        '-s', '--stats', action='store_true',
+        help="print execution stats")
 
     return parser.parse_args()
 
