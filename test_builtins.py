@@ -35,8 +35,10 @@ class BuiltinsTestCase(unittest.TestCase):
         self.assertEqual(run(env, "(inst/symbol= 'hi 'hey)"), SBool(False))
         self.assertEqual(run(env, "(inst/symbol= 'hi 'hi)"), SBool(True))
         self.assertEqual(run(env, "(inst/pointer= [] 0)"), SBool(False))
+        # Use a copy of the environment, since (lambda) adds a name to
+        # the environment.
         self.assertEqual(
-            run(env, '((lambda (x) (inst/pointer= x x)) [1])'),
+            run(dict(env), '((lambda (x) (inst/pointer= x x)) [1])'),
             SBool(True)
         )
         self.assertEqual(run(env, '(inst/number< -1 0)'), SBool(True))
@@ -64,7 +66,10 @@ class BuiltinsTestCase(unittest.TestCase):
         self.assertEqual(run(env, '(symbol? 42)'), SBool(False))
         self.assertEqual(run(env, '(vector? [])'), SBool(True))
         self.assertEqual(run(env, '(vector? 42)'), SBool(False))
-        self.assertEqual(run(env, '(function? (lambda () []))'), SBool(True))
+        # Use a copy of the environment, since (lambda) adds a name to
+        # the environment.
+        self.assertEqual(
+            run(dict(env), '(function? (lambda () []))'), SBool(True))
         self.assertEqual(run(env, '(function? 42)'), SBool(False))
         self.assertEqual(run(env, '(bool? true)'), SBool(True))
         self.assertEqual(run(env, '(bool? false)'), SBool(True))
@@ -98,8 +103,11 @@ class BuiltinsTestCase(unittest.TestCase):
         self.assertEqual(run(env, "(symbol= 'a 'b)"), SBool(False))
         self.assertEqual(run(env, "(symbol= 'a 'a)"), SBool(True))
 
-        self.assertEqual(run(env, "(pointer= (lambda () 0) (lambda () 0))"),
-                         SBool(False))
+        # Use a copy of the environment, since (lambda) adds a name to
+        # the environment.
+        self.assertEqual(
+            run(dict(env), "(pointer= (lambda () 0) (lambda () 0))"),
+            SBool(False))
         self.assertEqual(run(env, "(define (func) 42) (pointer= func func)"),
                          SBool(True))
         self.assertEqual(run(env, "(pointer= 0 0)"), SBool(True))

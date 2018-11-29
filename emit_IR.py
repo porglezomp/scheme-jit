@@ -49,6 +49,8 @@ class FunctionEmitter(Visitor):
         )
 
         func.code = emitted_func
+        assert func.name not in self.global_env, (
+            f"Duplicate function name: {func.name}")
         self.global_env[func.name] = func
 
 
