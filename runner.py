@@ -223,14 +223,14 @@ def run_code(env: EvalEnv, code: SExp,
             tail_call_finder.visit(code)
             tail_calls = tail_call_finder.tail_calls
 
-        emitter = FunctionEmitter(env, tail_calls=tail_calls)
+        emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
         emitter.visit(code)
         return env._global_env[code.name]
     else:
         name = SSym(f'{next(eval_names)}')
         code = sexp.SFunction(
             name, [], sexp.to_slist([code]), is_lambda=True)
-        emitter = FunctionEmitter(env)
+        emitter = FunctionEmitter(env._global_env)
         emitter.visit(code)
         function = env._global_env[name]
         assert isinstance(function, sexp.SFunction)
