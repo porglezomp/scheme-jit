@@ -1,18 +1,33 @@
-from typing import List, Optional, Set, cast
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, Set, cast
 
 import sexp
 from visitor import Visitor
 
 
+@dataclass
+class TailCallData:
+    call: sexp.SCall
+    func_params: List[sexp.SSym] = field(default_factory=list)
+
+    def __hash__(self) -> int:
+        return hash(id(self.call))
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, TailCallData):
+            return False
+        return hash(self) == hash(other)
+
+
 class TailCallFinder(Visitor):
     def __init__(self) -> None:
-        self._tail_calls: Set[sexp.SCall] = set()
+        self._tail_calls: List[TailCallData] = []
 
         self._current_function: Optional[sexp.SFunction] = None
 
     @property
-    def tail_calls(self) -> Set[sexp.SCall]:
-        return set(self._tail_calls)
+    def tail_calls(self) -> List[TailCallData]:
+        return list(self._tail_calls)
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         if func.is_lambda:
@@ -45,7 +60,8 @@ class TailCallFinder(Visitor):
         for arg_expr in call.args:
             recursive_call_finder.visit(arg_expr)
         if not recursive_call_finder.recursive_calls:
-            self._tail_calls.add(call)
+            self._tail_calls.append(
+                TailCallData(call, list(self._current_function.params)))
 
 
 class RecursiveCallFinder(Visitor):

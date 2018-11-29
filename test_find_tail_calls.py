@@ -1,8 +1,8 @@
-from typing import Set
 import unittest
+from typing import List
 
-from find_tail_calls import TailCallFinder
 import sexp
+from find_tail_calls import TailCallData, TailCallFinder
 
 
 class TailCallFinderTestCase(unittest.TestCase):
@@ -86,9 +86,9 @@ class TailCallFinderTestCase(unittest.TestCase):
             sexp.SSym('fib-tail-impl'), self.finder.tail_calls)
 
     def assert_symbol_in_tail_calls(self, sym: sexp.SSym,
-                                    tail_calls: Set[sexp.SCall]) -> None:
-        for call in tail_calls:
-            if sym == call.func:
+                                    tail_calls: List[TailCallData]) -> None:
+        for call_data in tail_calls:
+            if sym == call_data.call.func:
                 return
 
         self.fail(f'Symbol: {sym} not found in {tail_calls}')

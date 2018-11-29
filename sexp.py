@@ -239,11 +239,6 @@ class SCall(SExp):
     func: SExp
     args: List[SExp]
 
-    def __hash__(self) -> int:
-        # We need to be able to uniquely identify call nodes in a set()
-        # for tail-call detection to work.
-        return hash(id(self))
-
 
 @dataclass(frozen=True)
 class SConditional(SExp):
