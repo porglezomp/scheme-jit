@@ -32,6 +32,9 @@ class BB(ABC):
     def successors(self) -> Iterable[BB]:
         return []
 
+    def format_stats(self, stats: Stats) -> str:
+        raise NotImplementedError("format_stats")
+
 
 @dataclass(frozen=True)
 class Var(Parameter):
@@ -77,10 +80,19 @@ class BoolLit(Parameter):
         return f"'{self.value}"
 
 
+@dataclass
+class Stats:
+    inst_type_count: Counter[type] = field(default_factory=Counter)
+    block_count: Counter[int] = field(default_factory=Counter)
+    inst_count: Counter[int] = field(default_factory=Counter)
+    taken_count: Counter[int] = field(default_factory=Counter)
+    function_count: Counter[int] = field(default_factory=Counter)
+
+
 class EvalEnv:
     _local_env: Dict[Var, Value]
     _global_env: Dict[SSym, Value]
-    stats: Counter[type]
+    stats: Stats
 
     def __init__(self,
                  local_env: Optional[Dict[Var, Value]] = None,
@@ -93,12 +105,12 @@ class EvalEnv:
             self._global_env = {}
         else:
             self._global_env = global_env
-        self.stats = Counter()
+        self.stats = Stats()
 
     def copy(self) -> EvalEnv:
         """Return a shallow copy of the environment."""
         env = EvalEnv(self._local_env.copy(), self._global_env)
-        env.stats = self.stats.copy()
+        env.stats = self.stats
         return env
 
     def __getitem__(self, key: Parameter) -> Value:
@@ -162,7 +174,6 @@ class BinopInst(Inst):
     rhs: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         lhs = env[self.lhs]
         rhs = env[self.rhs]
         if self.op == Binop.SYM_EQ:
@@ -201,7 +212,6 @@ class TypeofInst(Inst):
     value: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         env[self.dest] = env[self.value].type_name()
 
     def __str__(self) -> str:
@@ -214,7 +224,6 @@ class CopyInst(Inst):
     value: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         env[self.dest] = env[self.value]
 
     def __str__(self) -> str:
@@ -227,7 +236,6 @@ class LookupInst(Inst):
     name: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         sym = env[self.name]
         assert isinstance(sym, SSym)
         value = env._global_env[sym]
@@ -244,7 +252,6 @@ class AllocInst(Inst):
     size: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         size = env[self.size]
         assert isinstance(size, SNum)
         env[self.dest] = SVect([sexp.Nil] * size.value)
@@ -260,7 +267,6 @@ class LoadInst(Inst):
     offset: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         vect = env[self.addr]
         index = env[self.offset]
         assert isinstance(vect, SVect) and isinstance(index, SNum)
@@ -280,7 +286,6 @@ class StoreInst(Inst):
     value: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         vect = env[self.addr]
         index = env[self.offset]
         assert isinstance(vect, SVect) and isinstance(index, SNum)
@@ -297,7 +302,6 @@ class LengthInst(Inst):
     addr: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         vect = env[self.addr]
         assert isinstance(vect, SVect), vect
         env[self.dest] = SNum(len(vect.items))
@@ -312,7 +316,6 @@ class ArityInst(Inst):
     func: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         func = env[self.func]
         assert isinstance(func, sexp.SFunction), func
         env[self.dest] = SNum(len(func.params))
@@ -328,7 +331,6 @@ class CallInst(Inst):
     args: List[Parameter]
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         for _ in self.run_call(env):
             pass
 
@@ -358,7 +360,6 @@ class JmpInst(Inst):
         return f"JmpInst(target={self.target.name})"
 
     def run(self, env: EvalEnv) -> BB:
-        env.stats[type(self)] += 1
         return self.target
 
     def successors(self) -> Iterable[BB]:
@@ -377,7 +378,6 @@ class BrInst(Inst):
         return (f"BrInst(cond={self.cond}, target={self.target.name})")
 
     def run(self, env: EvalEnv) -> Optional[BB]:
-        env.stats[type(self)] += 1
         res = env[self.cond]
         assert isinstance(res, sexp.SBool)
         if res.value:
@@ -400,7 +400,6 @@ class BrnInst(Inst):
         return (f"BrnInst(cond={self.cond}, target={self.target.name})")
 
     def run(self, env: EvalEnv) -> Optional[BB]:
-        env.stats[type(self)] += 1
         res = env[self.cond]
         assert isinstance(res, sexp.SBool)
         if not res.value:
@@ -419,7 +418,6 @@ class ReturnInst(Inst):
     ret: Parameter
 
     def run(self, env: EvalEnv) -> Optional[BB]:
-        env.stats[type(self)] += 1
         return ReturnBlock(f"return {self.ret}", self.ret)
 
     def __str__(self) -> str:
@@ -431,7 +429,6 @@ class TrapInst(Inst):
     message: str
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         raise Trap(self.message)
 
     def __str__(self) -> str:
@@ -443,7 +440,6 @@ class TraceInst(Inst):
     value: Parameter
 
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         print(env[self.value])
 
     def __str__(self) -> str:
@@ -453,7 +449,6 @@ class TraceInst(Inst):
 @dataclass
 class BreakpointInst(Inst):
     def run(self, env: EvalEnv) -> None:
-        env.stats[type(self)] += 1
         breakpoint()
 
     def __str__(self) -> str:
@@ -467,21 +462,33 @@ class BasicBlock(BB):
 
     def __str__(self) -> str:
         return f"{self.name}:\n" + "\n".join(
-            "  " + str(i) for i in self.instructions
+            f"  {i}" for i in self.instructions
+        )
+
+    def format_stats(self, stats: Stats) -> str:
+        return f"{stats.block_count[id(self)]:>8} {self.name}:\n" + "\n".join(
+            f"{stats.inst_count[id(i)]:>8} "
+            f"  {str(i):<40} "
+            f"""{f'(taken {stats.taken_count[id(i)]})'
+                  if stats.taken_count[id(i)] else ''}"""
+            for i in self.instructions
         )
 
     def add_inst(self, inst: Inst) -> None:
         self.instructions.append(inst)
 
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, BB]:
-        env.stats[type(self)] += 1
+        env.stats.block_count[id(self)] += 1
         for inst in self.instructions:
+            env.stats.inst_type_count[type(inst)] += 1
+            env.stats.inst_count[id(inst)] += 1
             if isinstance(inst, CallInst):
                 yield from inst.run_call(env)
             else:
                 next_bb = inst.run(env)
             yield env.copy()
             if next_bb is not None:
+                env.stats.taken_count[id(inst)] += 1
                 break
         assert next_bb
         return next_bb
@@ -505,6 +512,7 @@ class Function:
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, Value]:
         assert all(p in env for p in self.params)
         block = self.start
+        env.stats.function_count[id(self)] += 1
         while True:
             if isinstance(block, BasicBlock):
                 block = yield from block.run(env)
@@ -524,14 +532,20 @@ class Function:
         while blocks:
             block = blocks.pop()
             yield block
-            blocks.extend(b for b in block.successors()
-                          if id(b) not in visited)
-            visited |= set(map(id, blocks))
+            for b in block.successors():
+                if id(b) not in visited:
+                    visited.add(id(b))
+                    blocks.append(b)
 
     def __str__(self) -> str:
-        return (f"function ({', '.join(x.name for x in self.params)})"
+        return (f"function (? {' '.join(x.name for x in self.params)})"
                 f" entry={self.start.name}\n"
                 + '\n\n'.join(str(b) for b in self.blocks()))
+
+    def format_stats(self, name: SSym, stats: Stats) -> str:
+        return (f"function ({name} {' '.join(x.name for x in self.params)})"
+                f" entry={self.start.name}\n"
+                + '\n\n'.join(b.format_stats(stats) for b in self.blocks()))
 
 
 T = TypeVar('T')

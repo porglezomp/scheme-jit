@@ -3,12 +3,12 @@ from typing import Dict, List, Optional
 import bytecode
 import emit_IR
 import sexp
-from bytecode import BasicBlock, Binop, Function, Inst, Var
+from bytecode import BasicBlock, Binop, EvalEnv, Function, Inst, Var
 from emit_IR import FunctionEmitter
 from sexp import Nil, SExp, SFunction, SSym, Value
 
 
-def add_intrinsics(env: Dict[SSym, Value]) -> None:
+def add_intrinsics(eval_env: EvalEnv) -> None:
     """Add intrinsics to the environment."""
     def inst_function(
             name: SSym, params: List[Var],
@@ -30,6 +30,7 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
             bytecode.BinopInst(result, op, Var('a'), Var('b')))
 
     result = Var('result')
+    env = eval_env._global_env
     env[SSym('inst/typeof')] = inst_function(
         SSym('inst/typeof'), [Var('x')], result,
         bytecode.TypeofInst(result, Var('x')))
@@ -67,7 +68,7 @@ def add_intrinsics(env: Dict[SSym, Value]) -> None:
     env[SSym('inst/number<')] = binop(SSym('inst/number<'), Binop.NUM_LT)
 
 
-def add_builtins(env: Dict[SSym, Value]) -> None:
+def add_builtins(env: EvalEnv) -> None:
     """Add builtins to the environment."""
     code = sexp.parse("""
     (define (trap) (inst/trap))
@@ -156,12 +157,12 @@ def add_builtins(env: Dict[SSym, Value]) -> None:
         (inst/alloc 0)
         (vector-make/recur n 0 (inst/alloc n) x)))
     """)
-    emitter = FunctionEmitter(env)
+    emitter = FunctionEmitter(env._global_env)
     for definition in code:
         emitter.visit(definition)
 
 
-def add_prelude(env: Dict[SSym, Value]) -> None:
+def add_prelude(env: EvalEnv) -> None:
     """Add prelude functions to the environment."""
     code = sexp.parse("""
     ;; The loop body for vector=, not to be used on its own
@@ -202,7 +203,7 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
     (define (car l) (vector-index l 0))
     (define (cdr l) (vector-index l 1))
     """)
-    emitter = FunctionEmitter(env)
+    emitter = FunctionEmitter(env._global_env)
     for definition in code:
         emitter.visit(definition)
 
@@ -210,32 +211,31 @@ def add_prelude(env: Dict[SSym, Value]) -> None:
 eval_names = emit_IR.name_generator('__eval_expr')
 
 
-def run_code(env: Dict[SSym, Value], code: SExp) -> Value:
+def run_code(env: EvalEnv, code: SExp) -> Value:
     """Run a piece of code in an environment, returning its result."""
-    emitter = FunctionEmitter(env)
+    emitter = FunctionEmitter(env._global_env)
     if isinstance(code, sexp.SFunction):
         emitter.visit(code)
-        return env[code.name]
+        return env._global_env[code.name]
     else:
         name = SSym(f'{next(eval_names)}')
         code = sexp.SFunction(
             name, [], sexp.to_slist([code]), is_lambda=True)
         emitter.visit(code)
-        function = env[name]
+        function = env._global_env[name]
         assert isinstance(function, sexp.SFunction)
         assert function.code is not None
-        eval_env = bytecode.EvalEnv({}, env)
-        gen = bytecode.ResultGenerator(function.code.run(eval_env))
+        gen = bytecode.ResultGenerator(function.code.run(env))
         gen.run()
         assert gen.value is not None
         return gen.value
 
 
-def run(env: Dict[SSym, Value], text: str) -> Value:
+def run(env: EvalEnv, text: str) -> Value:
     """
     Run a piece of code in an environment, returning its result.
 
-    >>> env = {}
+    >>> env = EvalEnv()
     >>> add_intrinsics(env)
     >>> add_builtins(env)
     >>> add_prelude(env)

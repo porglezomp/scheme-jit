@@ -5,6 +5,13 @@ import sexp
 from errors import EnvBindingNotFound
 from visitor import Visitor
 
+IS_FUNCTION_TRAP = bytecode.BasicBlock(
+    'non_function',
+    [bytecode.TrapInst('Attempted to call a non-function')])
+ARITY_TRAP = bytecode.BasicBlock(
+    'wrong_arity',
+    [bytecode.TrapInst('Call with the wrong number of arguments')])
+
 
 class FunctionEmitter(Visitor):
     def __init__(self, global_env: Dict[sexp.SSym, sexp.Value]) -> None:
@@ -16,7 +23,7 @@ class FunctionEmitter(Visitor):
             local_env[param] = bytecode.Var(param.name)
 
         bb_names = name_generator('bb')
-        var_names = name_generator('var')
+        var_names = name_generator('v')
 
         body_exprs = list(func.body)
 
@@ -235,18 +242,15 @@ class ExpressionEmitter(Visitor):
     def _add_is_function_check(
             self, function_expr: bytecode.Parameter,
             add_to_block: bytecode.BasicBlock) -> None:
-        typeof_var = bytecode.Var('__typeof')
+        typeof_var = bytecode.Var(next(self.var_names))
         typeof_instr = bytecode.TypeofInst(
             typeof_var, function_expr)
-        is_function_var = bytecode.Var('__is_func')
+        is_function_var = bytecode.Var(next(self.var_names))
         is_function_instr = bytecode.BinopInst(
             is_function_var, bytecode.Binop.SYM_EQ,
             typeof_var, bytecode.SymLit(sexp.SSym('function'))
         )
-        trap_block = bytecode.BasicBlock(
-            '__non_function_trap',
-            [bytecode.TrapInst('Attempted to call a non-function')])
-        branch_instr = bytecode.BrnInst(is_function_var, trap_block)
+        branch_instr = bytecode.BrnInst(is_function_var, IS_FUNCTION_TRAP)
 
         for instr in [typeof_instr, is_function_instr, branch_instr]:
             add_to_block.add_inst(instr)
@@ -254,17 +258,14 @@ class ExpressionEmitter(Visitor):
     def _add_arity_check(
             self, function_expr: bytecode.Parameter,
             add_to_block: bytecode.BasicBlock, arity: int) -> None:
-        arity_var = bytecode.Var('__arity')
+        arity_var = bytecode.Var(next(self.var_names))
         add_to_block.add_inst(bytecode.ArityInst(arity_var, function_expr))
-        correct_arity_var = bytecode.Var('__correct_arity')
+        correct_arity_var = bytecode.Var(next(self.var_names))
         add_to_block.add_inst(bytecode.BinopInst(
             correct_arity_var, bytecode.Binop.NUM_EQ,
             arity_var, bytecode.NumLit(sexp.SNum(arity))
         ))
-        trap_block = bytecode.BasicBlock(
-            '__wrong_arity_trap',
-            [bytecode.TrapInst('Call with the wrong number of arguments')])
-        add_to_block.add_inst(bytecode.BrnInst(correct_arity_var, trap_block))
+        add_to_block.add_inst(bytecode.BrnInst(correct_arity_var, ARITY_TRAP))
 
 
 def name_generator(prefix: str) -> Iterator[str]:
