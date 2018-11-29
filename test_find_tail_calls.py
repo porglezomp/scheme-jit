@@ -56,13 +56,13 @@ class TailCallFinderTestCase(unittest.TestCase):
         prog = sexp.parse(
             '(define (not-tail) (not-tail) (if true true false) (not-tail))')
         self.finder.visit(prog)
-        self.assertEqual(0, len(self.finder.tail_calls))
+        self.assertEqual(1, len(self.finder.tail_calls))
 
-    def test_potential_tail_call_has_recusive_call_as_args(self) -> None:
+    def test_tail_call_has_recusive_call_as_args(self) -> None:
         prog = sexp.parse(
-            '(define (not-tail arg1 arg2) (not-tail 42 (not-tail 42 43)))')
+            '(define (tail-ish arg1 arg2) (tail-ish 42 (tail-ish 42 43)))')
         self.finder.visit(prog)
-        self.assertEqual(0, len(self.finder.tail_calls))
+        self.assertEqual(1, len(self.finder.tail_calls))
 
     def test_fib_tail(self) -> None:
         prog = sexp.parse('''
