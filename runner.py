@@ -5,6 +5,7 @@ import emit_IR
 import sexp
 from bytecode import BasicBlock, Binop, EvalEnv, Function, Inst, Var
 from emit_IR import FunctionEmitter
+from find_tail_calls import TailCallFinder
 from sexp import Nil, SExp, SFunction, SSym, Value
 
 
@@ -211,16 +212,25 @@ def add_prelude(env: EvalEnv) -> None:
 eval_names = emit_IR.name_generator('__eval_expr')
 
 
-def run_code(env: EvalEnv, code: SExp) -> Value:
+def run_code(env: EvalEnv, code: SExp,
+             optimize_tail_calls: bool = False) -> Value:
     """Run a piece of code in an environment, returning its result."""
     emitter = FunctionEmitter(env._global_env)
     if isinstance(code, sexp.SFunction):
+        tail_calls = None
+        if optimize_tail_calls:
+            tail_call_finder = TailCallFinder()
+            tail_call_finder.visit(code)
+            tail_calls = tail_call_finder.tail_calls
+
+        emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
         emitter.visit(code)
         return env._global_env[code.name]
     else:
         name = SSym(f'{next(eval_names)}')
         code = sexp.SFunction(
             name, [], sexp.to_slist([code]), is_lambda=True)
+        emitter = FunctionEmitter(env._global_env)
         emitter.visit(code)
         function = env._global_env[name]
         assert isinstance(function, sexp.SFunction)
@@ -231,7 +241,7 @@ def run_code(env: EvalEnv, code: SExp) -> Value:
         return gen.value
 
 
-def run(env: EvalEnv, text: str) -> Value:
+def run(env: EvalEnv, text: str, optimize_tail_calls: bool = False) -> Value:
     """
     Run a piece of code in an environment, returning its result.
 
@@ -247,5 +257,5 @@ def run(env: EvalEnv, text: str) -> Value:
     code = sexp.parse(text)
     result: Value = sexp.SVect([])
     for part in code:
-        result = run_code(env, part)
+        result = run_code(env, part, optimize_tail_calls=optimize_tail_calls)
     return result

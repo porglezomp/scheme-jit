@@ -1,8 +1,11 @@
-from typing import Dict, Iterator, List, Optional, cast
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, cast
 
 import bytecode
 import sexp
 from errors import EnvBindingNotFound
+from find_tail_calls import TailCallData
 from visitor import Visitor
 
 IS_FUNCTION_TRAP = bytecode.BasicBlock(
@@ -14,8 +17,10 @@ ARITY_TRAP = bytecode.BasicBlock(
 
 
 class FunctionEmitter(Visitor):
-    def __init__(self, global_env: Dict[sexp.SSym, sexp.Value]) -> None:
+    def __init__(self, global_env: Dict[sexp.SSym, sexp.Value],
+                 tail_calls: Optional[List[TailCallData]] = None) -> None:
         self.global_env = global_env
+        self._tail_calls = tail_calls
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         local_env: Dict[sexp.SSym, bytecode.Var] = {}
@@ -31,12 +36,16 @@ class FunctionEmitter(Visitor):
 
         start_block = bytecode.BasicBlock(next(bb_names))
         emitter = ExpressionEmitter(
-            start_block, bb_names, var_names, local_env, self.global_env)
+            start_block, bb_names, var_names, local_env, self.global_env,
+            function_entrypoint=start_block,
+            tail_calls=self._tail_calls)
         for expr in body_exprs[:-1]:
             emitter.visit(expr)
             emitter = ExpressionEmitter(
                 emitter.end_block, bb_names, var_names,
-                local_env, self.global_env)
+                local_env, self.global_env,
+                function_entrypoint=start_block,
+                tail_calls=self._tail_calls)
 
         emitter.visit(body_exprs[-1])
 
@@ -49,6 +58,8 @@ class FunctionEmitter(Visitor):
         )
 
         func.code = emitted_func
+        assert func.name not in self.global_env, (
+            f"Duplicate function name: {func.name}")
         self.global_env[func.name] = func
 
 
@@ -60,14 +71,20 @@ class ExpressionEmitter(Visitor):
                  var_names: Iterator[str],
                  local_env: Dict[sexp.SSym, bytecode.Var],
                  global_env: Dict[sexp.SSym, sexp.Value],
-                 quoted: bool = False) -> None:
+                 *,
+                 function_entrypoint: Optional[bytecode.BasicBlock] = None,
+                 quoted: bool = False,
+                 tail_calls: Optional[List[TailCallData]] = None) -> None:
         self.parent_block = parent_block
         self.end_block = parent_block
         self.bb_names = bb_names
         self.var_names = var_names
         self.local_env = local_env
         self.global_env = global_env
+
+        self._function_entrypoint = function_entrypoint
         self.quoted = quoted
+        self._tail_calls = tail_calls
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         assert func.is_lambda, 'Nested named functions not supported'
@@ -88,7 +105,9 @@ class ExpressionEmitter(Visitor):
 
         test_emitter = ExpressionEmitter(
             self.parent_block, self.bb_names, self.var_names,
-            self.local_env, self.global_env)
+            self.local_env, self.global_env,
+            function_entrypoint=self._function_entrypoint,
+            tail_calls=self._tail_calls)
         test_emitter.visit(conditional.test)
 
         then_block = bytecode.BasicBlock(next(self.bb_names))
@@ -104,7 +123,9 @@ class ExpressionEmitter(Visitor):
 
         then_emitter = ExpressionEmitter(
             then_block, self.bb_names, self.var_names,
-            self.local_env, self.global_env)
+            self.local_env, self.global_env,
+            function_entrypoint=self._function_entrypoint,
+            tail_calls=self._tail_calls)
         then_emitter.visit(conditional.then_expr)
 
         then_result_instr = bytecode.CopyInst(result_var, then_emitter.result)
@@ -112,7 +133,9 @@ class ExpressionEmitter(Visitor):
 
         else_emitter = ExpressionEmitter(
             else_block, self.bb_names, self.var_names,
-            self.local_env, self.global_env)
+            self.local_env, self.global_env,
+            function_entrypoint=self._function_entrypoint,
+            tail_calls=self._tail_calls)
         else_emitter.visit(conditional.else_expr)
 
         else_result_instr = bytecode.CopyInst(result_var, else_emitter.result)
@@ -153,7 +176,9 @@ class ExpressionEmitter(Visitor):
         for (i, expr) in enumerate(vect.items):
             expr_emitter = ExpressionEmitter(
                 parent_block, self.bb_names, self.var_names,
-                self.local_env, self.global_env)
+                self.local_env, self.global_env,
+                function_entrypoint=self._function_entrypoint,
+                tail_calls=self._tail_calls)
             expr_emitter.visit(expr)
             parent_block = expr_emitter.end_block
 
@@ -186,7 +211,10 @@ class ExpressionEmitter(Visitor):
 
             expr_emitter = ExpressionEmitter(
                 self.parent_block, self.bb_names, self.var_names,
-                self.local_env, self.global_env, quoted=True)
+                self.local_env, self.global_env,
+                quoted=True,
+                function_entrypoint=self._function_entrypoint,
+                tail_calls=self._tail_calls)
             expr_emitter.visit(expr)
 
             store_car = bytecode.StoreInst(
@@ -205,39 +233,63 @@ class ExpressionEmitter(Visitor):
     def visit_SCall(self, call: sexp.SCall) -> None:
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
-        func_expr_emitter = ExpressionEmitter(
-            self.parent_block, self.bb_names, self.var_names,
-            self.local_env, self.global_env)
-        func_expr_emitter.visit(call.func)
+        is_tail_call = (self._tail_calls is not None
+                        and TailCallData(call) in self._tail_calls)
 
-        self._add_is_function_check(
-            func_expr_emitter.result, func_expr_emitter.end_block)
-        self._add_arity_check(
-            func_expr_emitter.result, func_expr_emitter.end_block,
-            len(call.args))
+        if not is_tail_call:
+            func_expr_emitter = ExpressionEmitter(
+                self.parent_block, self.bb_names, self.var_names,
+                self.local_env, self.global_env,
+                function_entrypoint=self._function_entrypoint,
+                tail_calls=self._tail_calls)
+            func_expr_emitter.visit(call.func)
+
+            self._add_is_function_check(
+                func_expr_emitter.result, func_expr_emitter.end_block)
+            self._add_arity_check(
+                func_expr_emitter.result, func_expr_emitter.end_block,
+                len(call.args))
+
+            self.end_block = func_expr_emitter.end_block
 
         args: List[bytecode.Parameter] = []
         arg_emitter: Optional[ExpressionEmitter] = None
-        self.end_block = func_expr_emitter.end_block
-        for arg in call.args:
+        for arg_expr in call.args:
             arg_emitter = ExpressionEmitter(
                 self.end_block, self.bb_names, self.var_names,
-                self.local_env, self.global_env
+                self.local_env, self.global_env,
+                function_entrypoint=self._function_entrypoint,
+                tail_calls=self._tail_calls
             )
-            arg_emitter.visit(arg)
+            arg_emitter.visit(arg_expr)
             args.append(arg_emitter.result)
             self.end_block = arg_emitter.end_block
 
-        call_result_var = bytecode.Var(next(self.var_names))
-        call_instr = bytecode.CallInst(
-            call_result_var, func_expr_emitter.result, args)
+        new_end_block = (arg_emitter.end_block if arg_emitter is not None
+                         else func_expr_emitter.end_block)
 
-        if arg_emitter is None:
-            func_expr_emitter.end_block.add_inst(call_instr)
+        if is_tail_call:
+            assert self._tail_calls is not None
+            tail_call_data = self._tail_calls[
+                self._tail_calls.index(TailCallData(call))]
+            for arg, param in zip(args, tail_call_data.func_params):
+                local_var = self.local_env[param]
+                if arg != local_var:
+                    new_end_block.add_inst(bytecode.CopyInst(local_var, arg))
+
+            assert self._function_entrypoint is not None
+            new_end_block.add_inst(bytecode.JmpInst(self._function_entrypoint))
+
+            # We need a placeholder result since we're jumping back
+            # to the beginning of the function
+            self.result = bytecode.NumLit(sexp.SNum(0))
         else:
-            arg_emitter.end_block.add_inst(call_instr)
+            call_result_var = bytecode.Var(next(self.var_names))
+            call_instr = bytecode.CallInst(
+                call_result_var, func_expr_emitter.result, args)
 
-        self.result = call_result_var
+            new_end_block.add_inst(call_instr)
+            self.result = call_result_var
 
     def _add_is_function_check(
             self, function_expr: bytecode.Parameter,

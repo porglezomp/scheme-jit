@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from typing import (TYPE_CHECKING, Iterator, List, Optional, Sequence, Tuple,
                     Union, cast)
 
-import bytecode
+if TYPE_CHECKING:
+    import bytecode
 
 
 class SExp:

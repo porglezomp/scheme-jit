@@ -21,7 +21,8 @@ def main() -> None:
     runner.add_intrinsics(env)
     runner.add_builtins(env)
     runner.add_prelude(env)
-    print(runner.run(env, prog_text))
+    print(runner.run(env, prog_text,
+                     optimize_tail_calls=args.transform_tail_calls))
 
     if args.stats:
         print('-----')
@@ -47,6 +48,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '-s', '--stats', action='store_true',
         help="print execution stats")
+
+    parser.add_argument(
+        '--transform_tail_calls', '-t', action='store_true', default=False)
 
     return parser.parse_args()
 
