@@ -233,22 +233,27 @@ class ExpressionEmitter(Visitor):
     def visit_SCall(self, call: sexp.SCall) -> None:
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
-        func_expr_emitter = ExpressionEmitter(
-            self.parent_block, self.bb_names, self.var_names,
-            self.local_env, self.global_env,
-            function_entrypoint=self._function_entrypoint,
-            tail_calls=self._tail_calls)
-        func_expr_emitter.visit(call.func)
+        is_tail_call = (self._tail_calls is not None
+                        and TailCallData(call) in self._tail_calls)
 
-        self._add_is_function_check(
-            func_expr_emitter.result, func_expr_emitter.end_block)
-        self._add_arity_check(
-            func_expr_emitter.result, func_expr_emitter.end_block,
-            len(call.args))
+        if not is_tail_call:
+            func_expr_emitter = ExpressionEmitter(
+                self.parent_block, self.bb_names, self.var_names,
+                self.local_env, self.global_env,
+                function_entrypoint=self._function_entrypoint,
+                tail_calls=self._tail_calls)
+            func_expr_emitter.visit(call.func)
+
+            self._add_is_function_check(
+                func_expr_emitter.result, func_expr_emitter.end_block)
+            self._add_arity_check(
+                func_expr_emitter.result, func_expr_emitter.end_block,
+                len(call.args))
+
+            self.end_block = func_expr_emitter.end_block
 
         args: List[bytecode.Parameter] = []
         arg_emitter: Optional[ExpressionEmitter] = None
-        self.end_block = func_expr_emitter.end_block
         for arg_expr in call.args:
             arg_emitter = ExpressionEmitter(
                 self.end_block, self.bb_names, self.var_names,
@@ -263,8 +268,8 @@ class ExpressionEmitter(Visitor):
         new_end_block = (arg_emitter.end_block if arg_emitter is not None
                          else func_expr_emitter.end_block)
 
-        if (self._tail_calls is not None
-                and TailCallData(call) in self._tail_calls):
+        if is_tail_call:
+            assert self._tail_calls is not None
             tail_call_data = self._tail_calls[
                 self._tail_calls.index(TailCallData(call))]
             for arg, param in zip(args, tail_call_data.func_params):
