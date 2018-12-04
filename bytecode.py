@@ -364,7 +364,11 @@ class CallInst(Inst):
 
     def __str__(self) -> str:
         args = ', '.join(str(arg) for arg in self.args)
-        return f"{self.dest} = call {self.func} ({args})"
+        text = f"{self.dest} = call {self.func} ({args})"
+        if self.specialization:
+            types = ', '.join(str(ty) for ty in self.specialization)
+            text += f" ({types})"
+        return text
 
 
 @dataclass
