@@ -6,8 +6,10 @@ from enum import Enum, auto
 from typing import (Any, Counter, Dict, Generator, Generic, Iterable, Iterator,
                     List, Optional, Set, TypeVar)
 
+import scheme_types
 import sexp
 from errors import Trap
+from scheme_types import TypeTuple
 from sexp import SBool, SExp, SNum, SSym, SVect, Value
 
 
@@ -329,6 +331,7 @@ class CallInst(Inst):
     dest: Var
     func: Parameter
     args: List[Parameter]
+    specialization: Optional[TypeTuple] = None
 
     def run(self, env: EvalEnv) -> None:
         for _ in self.run_call(env):
@@ -345,7 +348,19 @@ class CallInst(Inst):
         func_env._local_env = {
             name: env[arg] for name, arg in zip(func_code.params, self.args)
         }
-        env[self.dest] = yield from func_code.run(func_env)
+        if self.specialization:
+            assert self.specialization in func.specializations
+            specialized = func.specializations[self.specialization]
+            assert specialized.code
+            env[self.dest] = yield from specialized.code.run(func_env)
+        else:
+            type_tuple = tuple(env[arg].scheme_type() for arg in self.args)
+            if type_tuple in func.specializations:
+                specialized = func.specializations[type_tuple]
+                assert specialized.code
+                env[self.dest] = yield from specialized.code.run(func_env)
+            else:
+                env[self.dest] = yield from func_code.run(func_env)
 
     def __str__(self) -> str:
         args = ', '.join(str(arg) for arg in self.args)

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional, Tuple, Type
 
 import sexp
 
@@ -57,3 +57,6 @@ class SchemeFunctionType(SchemeObjectType):
 @dataclass(frozen=True)
 class SchemeQuotedType(SchemeObjectType):
     expr_type: Type[sexp.SExp]
+
+
+TypeTuple = Tuple[SchemeObjectType, ...]
