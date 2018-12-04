@@ -89,6 +89,7 @@ class Stats:
     inst_count: Counter[int] = field(default_factory=Counter)
     taken_count: Counter[int] = field(default_factory=Counter)
     function_count: Counter[int] = field(default_factory=Counter)
+    specialization_dispatch: Counter[int] = field(default_factory=Counter)
 
 
 class EvalEnv:
@@ -354,6 +355,7 @@ class CallInst(Inst):
             assert specialized.code
             env[self.dest] = yield from specialized.code.run(func_env)
         else:
+            env.stats.specialization_dispatch[id(self)] += 1
             type_tuple = tuple(env[arg].scheme_type() for arg in self.args)
             if type_tuple in func.specializations:
                 specialized = func.specializations[type_tuple]
