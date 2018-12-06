@@ -748,4 +748,5 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         actual_lambda = (
             self.function_emitter.global_env[sexp.SSym('__lambda0')])
         assert isinstance(actual_lambda, sexp.SFunction)
-        self.assertEqual(expected_lambda, actual_lambda.code)
+        self.assertEqual(expected_lambda,
+        self.function_emitter.get_emitted_func().code)
