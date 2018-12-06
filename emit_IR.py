@@ -102,16 +102,14 @@ class ExpressionEmitter(Visitor):
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
         # Don't re-emit lambdas defined in a function we're specializing
-        if self._param_types:
-            return
+        if not self._param_types:
+            func_emitter = FunctionEmitter(self.global_env)
+            func_emitter.visit(func)
+            func.code = func_emitter.get_emitted_func()
 
-        func_emitter = FunctionEmitter(self.global_env)
-        func_emitter.visit(func)
-        func.code = func_emitter.get_emitted_func()
-
-        assert func.name not in self.global_env, (
-            f"Duplicate function name: {func.name}")
-        self.global_env[func.name] = func
+            assert func.name not in self.global_env, (
+                f"Duplicate function name: {func.name}")
+            self.global_env[func.name] = func
 
         lambda_var = bytecode.Var(next(self.var_names))
         lookup_lambda_instr = bytecode.LookupInst(

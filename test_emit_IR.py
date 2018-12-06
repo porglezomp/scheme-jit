@@ -678,15 +678,12 @@ class EmitFunctionDefTestCase(unittest.TestCase):
             )
         )
 
-        self.assertEqual(1, len(self.function_emitter.global_env))
-        actual_func = self.function_emitter.global_env[sexp.SSym('func')]
-        assert isinstance(actual_func, sexp.SFunction)
-        self.assertEqual(expected, actual_func.code)
+        self.assertEqual(expected, self.function_emitter.get_emitted_func())
 
     def test_emit_multiple_function_defs(self) -> None:
         prog = sexp.parse('(define (func) 42) (define (func2) 43)')
-        self.function_emitter.visit(prog)
 
+        self.function_emitter.visit(prog[0])
         expected_func = bytecode.Function(
             [],
             bytecode.BasicBlock(
@@ -694,7 +691,10 @@ class EmitFunctionDefTestCase(unittest.TestCase):
                 [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(42)))]
             )
         )
+        self.assertEqual(
+            expected_func, self.function_emitter.get_emitted_func())
 
+        self.function_emitter.visit(prog[1])
         expected_func2 = bytecode.Function(
             [],
             bytecode.BasicBlock(
@@ -702,16 +702,8 @@ class EmitFunctionDefTestCase(unittest.TestCase):
                 [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(43)))]
             )
         )
-
-        self.assertEqual(2, len(self.function_emitter.global_env))
-
-        actual_func = self.function_emitter.global_env[sexp.SSym('func')]
-        assert isinstance(actual_func, sexp.SFunction)
-        self.assertEqual(expected_func, actual_func.code)
-
-        actual_func2 = self.function_emitter.global_env[sexp.SSym('func2')]
-        assert isinstance(actual_func2, sexp.SFunction)
-        self.assertEqual(expected_func2, actual_func2.code)
+        self.assertEqual(
+            expected_func2, self.function_emitter.get_emitted_func())
 
     def test_emit_lambda_def(self) -> None:
         prog = sexp.parse('(define (func) (lambda (spam) spam))')
@@ -741,12 +733,10 @@ class EmitFunctionDefTestCase(unittest.TestCase):
             )
         )
 
-        actual_func = self.function_emitter.global_env[sexp.SSym('func')]
-        assert isinstance(actual_func, sexp.SFunction)
-        self.assertEqual(expected_func, actual_func.code)
+        self.assertEqual(expected_func,
+                         self.function_emitter.get_emitted_func())
 
         actual_lambda = (
             self.function_emitter.global_env[sexp.SSym('__lambda0')])
         assert isinstance(actual_lambda, sexp.SFunction)
-        self.assertEqual(expected_lambda,
-        self.function_emitter.get_emitted_func().code)
+        self.assertEqual(expected_lambda, actual_lambda.code)
