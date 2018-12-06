@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, cast
 
 import bytecode
+import scheme_types
 import sexp
 from errors import EnvBindingNotFound
 from find_tail_calls import TailCallData
@@ -16,11 +17,22 @@ ARITY_TRAP = bytecode.BasicBlock(
     [bytecode.TrapInst('Call with the wrong number of arguments')])
 
 
+ParamTypes = Dict[sexp.SSym, scheme_types.SchemeObjectType]
+
+
 class FunctionEmitter(Visitor):
     def __init__(self, global_env: Dict[sexp.SSym, sexp.Value],
-                 tail_calls: Optional[List[TailCallData]] = None) -> None:
+                 tail_calls: Optional[List[TailCallData]] = None,
+                 param_types: Optional[ParamTypes] = None) -> None:
+        self._emitted_func: Optional[bytecode.Function] = None
         self.global_env = global_env
         self._tail_calls = tail_calls
+
+        self._param_types = param_types
+
+    def get_emitted_func(self) -> bytecode.Function:
+        assert self._emitted_func is not None
+        return self._emitted_func
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         local_env: Dict[sexp.SSym, bytecode.Var] = {}
@@ -57,10 +69,7 @@ class FunctionEmitter(Visitor):
             start_block
         )
 
-        func.code = emitted_func
-        assert func.name not in self.global_env, (
-            f"Duplicate function name: {func.name}")
-        self.global_env[func.name] = func
+        self._emitted_func = emitted_func
 
 
 class ExpressionEmitter(Visitor):
@@ -74,7 +83,8 @@ class ExpressionEmitter(Visitor):
                  *,
                  function_entrypoint: Optional[bytecode.BasicBlock] = None,
                  quoted: bool = False,
-                 tail_calls: Optional[List[TailCallData]] = None) -> None:
+                 tail_calls: Optional[List[TailCallData]] = None,
+                 param_types: Optional[ParamTypes] = None) -> None:
         self.parent_block = parent_block
         self.end_block = parent_block
         self.bb_names = bb_names
@@ -85,13 +95,23 @@ class ExpressionEmitter(Visitor):
         self._function_entrypoint = function_entrypoint
         self.quoted = quoted
         self._tail_calls = tail_calls
+        self._param_types = param_types
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         assert func.is_lambda, 'Nested named functions not supported'
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
+        # Don't re-emit lambdas defined in a function we're specializing
+        if self._param_types:
+            return
+
         func_emitter = FunctionEmitter(self.global_env)
         func_emitter.visit(func)
+        func.code = func_emitter.get_emitted_func()
+
+        assert func.name not in self.global_env, (
+            f"Duplicate function name: {func.name}")
+        self.global_env[func.name] = func
 
         lambda_var = bytecode.Var(next(self.var_names))
         lookup_lambda_instr = bytecode.LookupInst(

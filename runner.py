@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 import bytecode
 import emit_IR
@@ -161,6 +161,7 @@ def add_builtins(env: EvalEnv) -> None:
     emitter = FunctionEmitter(env._global_env)
     for definition in code:
         emitter.visit(definition)
+        _add_func_to_env(cast(sexp.SFunction, definition), emitter, env)
 
 
 def add_prelude(env: EvalEnv) -> None:
@@ -207,6 +208,7 @@ def add_prelude(env: EvalEnv) -> None:
     emitter = FunctionEmitter(env._global_env)
     for definition in code:
         emitter.visit(definition)
+        _add_func_to_env(cast(sexp.SFunction, definition), emitter, env)
 
 
 eval_names = emit_IR.name_generator('__eval_expr')
@@ -215,7 +217,6 @@ eval_names = emit_IR.name_generator('__eval_expr')
 def run_code(env: EvalEnv, code: SExp,
              optimize_tail_calls: bool = False) -> Value:
     """Run a piece of code in an environment, returning its result."""
-    emitter = FunctionEmitter(env._global_env)
     if isinstance(code, sexp.SFunction):
         tail_calls = None
         if optimize_tail_calls:
@@ -225,6 +226,7 @@ def run_code(env: EvalEnv, code: SExp,
 
         emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
         emitter.visit(code)
+        _add_func_to_env(code, emitter, env)
         return env._global_env[code.name]
     else:
         name = SSym(f'{next(eval_names)}')
@@ -232,6 +234,8 @@ def run_code(env: EvalEnv, code: SExp,
             name, [], sexp.to_slist([code]), is_lambda=True)
         emitter = FunctionEmitter(env._global_env)
         emitter.visit(code)
+        _add_func_to_env(code, emitter, env)
+
         function = env._global_env[name]
         assert isinstance(function, sexp.SFunction)
         assert function.code is not None
@@ -239,6 +243,14 @@ def run_code(env: EvalEnv, code: SExp,
         gen.run()
         assert gen.value is not None
         return gen.value
+
+
+def _add_func_to_env(func: sexp.SFunction, func_emitter: FunctionEmitter,
+                     env: EvalEnv) -> None:
+    func.code = func_emitter.get_emitted_func()
+    assert func.name not in env._global_env, (
+        f"Duplicate function name: {func.name}")
+    env._global_env[func.name] = func
 
 
 def run(env: EvalEnv, text: str, optimize_tail_calls: bool = False) -> Value:
