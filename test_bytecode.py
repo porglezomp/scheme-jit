@@ -2,6 +2,8 @@ import unittest
 from typing import Any
 
 import bytecode
+import scheme_types
+import sexp
 from bytecode import Binop, BoolLit, NumLit, SymLit, Var
 from sexp import SBool, SNum, SSym, SVect
 
@@ -151,3 +153,37 @@ class BytecodeTestCast(unittest.TestCase):
         gen = bytecode.ResultGenerator(is_list.run(env))
         gen.run()
         self.assertEqual(gen.value, SBool(True))
+
+    def test_call_specialized(self) -> None:
+        bb0 = bytecode.BasicBlock("bb0")
+        bb0.add_inst(bytecode.ReturnInst(BoolLit(SBool(False))))
+        byte_func = bytecode.Function([Var("x")], bb0)
+        bb0_specialized = bytecode.BasicBlock("bb0")
+        bb0_specialized.add_inst(bytecode.ReturnInst(BoolLit(SBool(True))))
+        byte_func_specialized = bytecode.Function([Var("x")], bb0_specialized)
+
+        func = sexp.SFunction(
+            SSym("func"), [SSym("x")], sexp.to_slist([]),
+            code=byte_func, is_lambda=False,
+            specializations={
+                (scheme_types.SchemeSym,): byte_func_specialized
+            },
+        )
+
+        env = bytecode.EvalEnv(local_env={Var('f'): func})
+        bytecode.CallInst(Var('y'), Var('f'), [NumLit(SNum(42))]).run(env)
+        assert env[Var('y')] == SBool(False)
+        bytecode.CallInst(Var('y'), Var('f'), [SymLit(SSym('x'))]).run(env)
+        assert env[Var('y')] == SBool(True)
+        bytecode.CallInst(Var('y'), Var('f'), [SymLit(SSym('x'))],
+                          specialization=(scheme_types.SchemeSym,)).run(env)
+        assert env[Var('y')] == SBool(True)
+
+        with self.assertRaises(AssertionError):
+            bytecode.CallInst(
+                Var('y'), Var('f'), [SymLit(SSym('x'))],
+                specialization=(scheme_types.SchemeNum,)).run(env)
+        with self.assertRaises(AssertionError):
+            bytecode.CallInst(
+                Var('y'), Var('f'), [NumLit(SNum(42))],
+                specialization=(scheme_types.SchemeNum,)).run(env)
