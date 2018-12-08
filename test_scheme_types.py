@@ -8,7 +8,7 @@ from scheme_types import FunctionTypeAnalyzer
 class FunctionTypeAnalyzerTestCase(unittest.TestCase):
     def test_quoted_symbol(self) -> None:
         prog = sexp.parse("'spam")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -16,7 +16,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_quoted_list(self) -> None:
         prog = sexp.parse("'(1 2 3)")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -24,7 +24,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_num_literal(self) -> None:
         prog = sexp.parse("42")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -32,7 +32,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_bool_literal(self) -> None:
         prog = sexp.parse("true")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -40,7 +40,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_sym_literal_not_function(self) -> None:
         prog = sexp.parse("spam")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -50,7 +50,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         param_types = {sexp.SSym('spam'): scheme_types.SchemeFunctionType(1)}
 
         prog = sexp.parse("spam")
-        analyzer = FunctionTypeAnalyzer(param_types)
+        analyzer = FunctionTypeAnalyzer(param_types, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -58,7 +58,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_sym_literal_is_builtin_function(self) -> None:
         prog = sexp.parse("number=")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -66,9 +66,25 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
             [scheme_types.SchemeFunctionType(2, scheme_types.SchemeBool)],
             types)
 
+    def test_sym_literal_is_global_user_function(self) -> None:
+        prog = sexp.parse("user_func")
+        user_func = sexp.SFunction(
+            sexp.SSym('user_func'),
+            [sexp.SSym('param1'), sexp.SSym('param2'), sexp.SSym('param3')],
+            sexp.to_slist([sexp.SBool(True)])
+        )
+        analyzer = FunctionTypeAnalyzer(
+            {}, {sexp.SSym('user_func'): user_func})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        self.assertEqual(
+            [scheme_types.SchemeFunctionType(3, scheme_types.SchemeObject)],
+            types)
+
     def test_function_def(self) -> None:
         prog = sexp.parse("(define (spam egg) egg)")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -84,7 +100,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_function_call_type_unknown(self) -> None:
         prog = sexp.parse("(spam)")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -93,7 +109,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_builtin_function_call_type(self) -> None:
         prog = sexp.parse("(number? 42)")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -107,7 +123,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
     def test_user_function_return_type_deduced(self) -> None:
         prog = sexp.parse("(define (spam egg) (+ egg 1))")
         analyzer = FunctionTypeAnalyzer(
-            {sexp.SSym('egg'): scheme_types.SchemeNum})
+            {sexp.SSym('egg'): scheme_types.SchemeNum}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -129,7 +145,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_conditional_same_type_branches(self) -> None:
         prog = sexp.parse("(if true 42 43)")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
@@ -143,7 +159,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
     def test_conditional_different_type_branches(self) -> None:
         prog = sexp.parse("(if true 42 false)")
-        analyzer = FunctionTypeAnalyzer({})
+        analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())

@@ -1,6 +1,7 @@
 import copy
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, Type
+
+from typing import Any, Dict, Mapping, Optional, Type, cast
 
 import sexp
 from visitor import Visitor
@@ -75,9 +76,12 @@ class SExpWrapper:
 
 
 class FunctionTypeAnalyzer(Visitor):
-    def __init__(self, param_types: Mapping[sexp.SSym, SchemeObjectType]):
+    def __init__(self, param_types: Mapping[sexp.SSym, SchemeObjectType],
+                 global_env: Dict[sexp.SSym, sexp.Value]):
         self._param_types = param_types
         self._expr_types: Dict[SExpWrapper, SchemeObjectType] = {}
+
+        self._global_env = global_env
 
         self._function_type: Optional[SchemeFunctionType] = None
 
@@ -121,6 +125,11 @@ class FunctionTypeAnalyzer(Visitor):
             self._set_expr_type(sym, self._param_types[sym])
         elif sym in _BUILTINS_FUNC_TYPES:
             self._set_expr_type(sym, _BUILTINS_FUNC_TYPES[sym])
+        elif sym in self._global_env:
+            func = self._global_env[sym]
+            # FIXME: replace with .scheme_type()
+            assert isinstance(func, sexp.SFunction)
+            self._set_expr_type(sym, SchemeFunctionType(len(func.params)))
         else:
             self._set_expr_type(sym, SchemeObject)
 
