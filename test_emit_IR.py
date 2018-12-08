@@ -736,11 +736,15 @@ class EmitFunctionDefTestCase(unittest.TestCase):
 
 
 class EmitSpecializedFuncTestCase(unittest.TestCase):
-    def test_partially_specialized_plus(self) -> None:
-        env = bytecode.EvalEnv()
-        # runner.add_intrinsics(env)
-        # runner.add_builtins(env)
+    env: bytecode.EvalEnv
 
+    def setUp(self) -> None:
+        self.env = bytecode.EvalEnv()
+        runner.add_intrinsics(self.env)
+        runner.add_builtins(self.env)
+        runner.add_prelude(self.env)
+
+    def test_partially_specialized_plus(self) -> None:
         prog = sexp.parse('''
             (define (plus first second)
                 (assert (number? first))
@@ -752,22 +756,96 @@ class EmitSpecializedFuncTestCase(unittest.TestCase):
             param_types={
                 sexp.SSym('first'): scheme_types.SchemeNum,
                 sexp.SSym('second'): scheme_types.SchemeObject
-            }
+            },
+            global_env={}
         )
         type_analyzer.visit(prog)
 
         emitter = emit_IR.FunctionEmitter(
-            env._global_env, expr_types=type_analyzer)
+            self.env._global_env, expr_types=type_analyzer)
         emitter.visit(prog)
         print(str(emitter.get_emitted_func()))
 
         self.fail()
 
     def test_fully_specialized_plus(self) -> None:
+        prog = sexp.parse('''
+            (define (plus first second)
+                (assert (number? first))
+                (assert (number? second))
+                (inst/+ first second)
+            )''')
+
+        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            param_types={
+                sexp.SSym('first'): scheme_types.SchemeNum,
+                sexp.SSym('second'): scheme_types.SchemeNum
+            },
+            global_env={}
+        )
+        type_analyzer.visit(prog)
+
+        emitter = emit_IR.FunctionEmitter(
+            self.env._global_env, expr_types=type_analyzer)
+        emitter.visit(prog)
+        print(str(emitter.get_emitted_func()))
+        self.fail()
+
+    def test_fully_specialized_plus_args_are_exprs(self) -> None:
+        prog = sexp.parse('''
+            (define (plus first second)
+                (assert (number? first))
+                (assert (number? second))
+                (inst/+ (+ 1 first) (+ second 1))
+            )''')
+
+        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            param_types={
+                sexp.SSym('first'): scheme_types.SchemeNum,
+                sexp.SSym('second'): scheme_types.SchemeNum
+            },
+            global_env={}
+        )
+        type_analyzer.visit(prog)
+
+        emitter = emit_IR.FunctionEmitter(
+            self.env._global_env, expr_types=type_analyzer)
+        emitter.visit(prog)
+        print(str(emitter.get_emitted_func()))
         self.fail()
 
     def test_specialize_in_bounds_vector_access(self) -> None:
         self.fail()
 
     def test_call_inst_in_specialized_func_includes_types(self) -> None:
+        self.fail()
+
+    def test_removed_arity_check(self) -> None:
+        self.fail()
+
+    def test_removed_is_func_check_param_is_func(self) -> None:
+        self.fail()
+
+    def test_removed_is_func_check_lambda_call(self) -> None:
+        self.fail()
+
+    def test_removed_is_func_and_arity_check_user_func_call(self) -> None:
+        [prog] = sexp.parse('''(define (spam) (spam))''')
+        assert isinstance(prog, sexp.SFunction)
+        emitter = emit_IR.FunctionEmitter(self.env._global_env)
+        emitter.visit(prog)
+        prog.code = emitter.get_emitted_func()
+        self.env._global_env[sexp.SSym('spam')] = prog
+
+        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            param_types={}, global_env=self.env._global_env)
+        type_analyzer.visit(prog)
+
+        specialized_emitter = emit_IR.FunctionEmitter(
+            self.env._global_env, expr_types=type_analyzer)
+        specialized_emitter.visit(prog)
+        print(str(specialized_emitter.get_emitted_func()))
+        self.fail()
+
+    def test_removed_is_func_check_builtin_func_call(self) -> None:
         self.fail()

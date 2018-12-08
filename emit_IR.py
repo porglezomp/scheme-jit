@@ -265,6 +265,12 @@ class ExpressionEmitter(Visitor):
         is_tail_call = (self._tail_calls is not None
                         and TailCallData(call) in self._tail_calls)
 
+        is_known_function = (
+            self._expr_types is not None
+            and self._expr_types.expr_type_known(call.func)
+            and isinstance(self._expr_types.get_expr_type(call.func),
+                           scheme_types.SchemeFunctionType)
+        )
         if not is_tail_call:
             func_expr_emitter = ExpressionEmitter(
                 self.parent_block, self.bb_names, self.var_names,
@@ -274,12 +280,23 @@ class ExpressionEmitter(Visitor):
                 expr_types=self._expr_types)
             func_expr_emitter.visit(call.func)
 
-            self._add_is_function_check(
-                func_expr_emitter.result, func_expr_emitter.end_block)
+            if not is_known_function:
+                self._add_is_function_check(
+                    func_expr_emitter.result, func_expr_emitter.end_block)
+                self.end_block = func_expr_emitter.end_block
+
+        arity_known_correct = False
+        if is_known_function:
+            self._expr_types = cast(scheme_types.FunctionTypeAnalyzer,
+                                    self._expr_types)
+            func_type = cast(scheme_types.SchemeFunctionType,
+                             self._expr_types.get_expr_type(call.func))
+            arity_known_correct = func_type.arity == len(call.args)
+
+        if not arity_known_correct:
             self._add_arity_check(
                 func_expr_emitter.result, func_expr_emitter.end_block,
                 len(call.args))
-
             self.end_block = func_expr_emitter.end_block
 
         args: List[bytecode.Parameter] = []
