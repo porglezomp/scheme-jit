@@ -527,6 +527,7 @@ class ReturnBlock(BB):
 class Function:
     params: List[Var]
     start: BB
+    end: BB
 
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, Value]:
         assert all(p in env for p in self.params)

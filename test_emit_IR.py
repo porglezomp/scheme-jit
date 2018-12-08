@@ -2,6 +2,8 @@ import unittest
 
 import bytecode
 import emit_IR
+import runner
+import scheme_types
 import sexp
 
 
@@ -224,14 +226,13 @@ class EmitExpressionTestCase(unittest.TestCase):
         prog = sexp.parse('((lambda (spam) spam) 42)')
         self.expr_emitter.visit(prog)
 
+        start_end_block = bytecode.BasicBlock(
+            'bb0', [bytecode.ReturnInst(bytecode.Var('spam'))]
+        )
         expected_lambda = bytecode.Function(
             [bytecode.Var('spam')],
-            bytecode.BasicBlock(
-                'bb0',
-                [
-                    bytecode.ReturnInst(bytecode.Var('spam'))
-                ]
-            )
+            start_end_block,
+            start_end_block
         )
 
         lambda_lookup_var = bytecode.Var('v0')
@@ -670,12 +671,11 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         self.function_emitter.visit(prog)
 
         return_var = bytecode.Var('spam')
+        start_end_block = bytecode.BasicBlock(
+            'bb0', [bytecode.ReturnInst(return_var)]
+        )
         expected = bytecode.Function(
-            [return_var],
-            bytecode.BasicBlock(
-                'bb0',
-                [bytecode.ReturnInst(return_var)]
-            )
+            [return_var], start_end_block, start_end_block
         )
 
         self.assertEqual(expected, self.function_emitter.get_emitted_func())
@@ -684,24 +684,22 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         prog = sexp.parse('(define (func) 42) (define (func2) 43)')
 
         self.function_emitter.visit(prog[0])
-        expected_func = bytecode.Function(
-            [],
-            bytecode.BasicBlock(
-                'bb0',
-                [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(42)))]
-            )
+
+        start_end_block = bytecode.BasicBlock(
+            'bb0',
+            [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(42)))]
         )
+        expected_func = bytecode.Function([], start_end_block, start_end_block)
         self.assertEqual(
             expected_func, self.function_emitter.get_emitted_func())
 
         self.function_emitter.visit(prog[1])
-        expected_func2 = bytecode.Function(
-            [],
-            bytecode.BasicBlock(
-                'bb0',
-                [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(43)))]
-            )
+        start_end_block = bytecode.BasicBlock(
+            'bb0',
+            [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(43)))]
         )
+        expected_func2 = bytecode.Function(
+            [], start_end_block, start_end_block)
         self.assertEqual(
             expected_func2, self.function_emitter.get_emitted_func())
 
@@ -710,27 +708,22 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         self.function_emitter.visit(prog)
 
         func_ret_var = bytecode.Var('v0')
-        expected_func = bytecode.Function(
-            [],
-            bytecode.BasicBlock(
-                'bb0',
-                [
-                    bytecode.LookupInst(
-                        func_ret_var, bytecode.SymLit(sexp.SSym('__lambda0'))
-                    ),
-                    bytecode.ReturnInst(func_ret_var)
-                ]
-            )
+        start_end_block = bytecode.BasicBlock(
+            'bb0',
+            [
+                bytecode.LookupInst(
+                    func_ret_var, bytecode.SymLit(sexp.SSym('__lambda0'))
+                ),
+                bytecode.ReturnInst(func_ret_var)
+            ]
         )
+        expected_func = bytecode.Function([], start_end_block, start_end_block)
 
+        start_end_block = bytecode.BasicBlock(
+            'bb0', [bytecode.ReturnInst(bytecode.Var('spam'))]
+        )
         expected_lambda = bytecode.Function(
-            [bytecode.Var('spam')],
-            bytecode.BasicBlock(
-                'bb0',
-                [
-                    bytecode.ReturnInst(bytecode.Var('spam'))
-                ]
-            )
+            [bytecode.Var('spam')], start_end_block, start_end_block
         )
 
         self.assertEqual(expected_func,
@@ -740,3 +733,41 @@ class EmitFunctionDefTestCase(unittest.TestCase):
             self.function_emitter.global_env[sexp.SSym('__lambda0')])
         assert isinstance(actual_lambda, sexp.SFunction)
         self.assertEqual(expected_lambda, actual_lambda.code)
+
+
+class EmitSpecializedFuncTestCase(unittest.TestCase):
+    def test_partially_specialized_plus(self) -> None:
+        env = bytecode.EvalEnv()
+        # runner.add_intrinsics(env)
+        # runner.add_builtins(env)
+
+        prog = sexp.parse('''
+            (define (plus first second)
+                (assert (number? first))
+                (assert (number? second))
+                (inst/+ first second)
+            )''')
+
+        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            param_types={
+                sexp.SSym('first'): scheme_types.SchemeNum,
+                sexp.SSym('second'): scheme_types.SchemeObject
+            }
+        )
+        type_analyzer.visit(prog)
+
+        emitter = emit_IR.FunctionEmitter(
+            env._global_env, expr_types=type_analyzer)
+        emitter.visit(prog)
+        print(str(emitter.get_emitted_func()))
+
+        self.fail()
+
+    def test_fully_specialized_plus(self) -> None:
+        self.fail()
+
+    def test_specialize_in_bounds_vector_access(self) -> None:
+        self.fail()
+
+    def test_call_inst_in_specialized_func_includes_types(self) -> None:
+        self.fail()

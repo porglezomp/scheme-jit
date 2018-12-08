@@ -88,13 +88,13 @@ class FunctionTypeAnalyzer(Visitor):
     def get_expr_types(self) -> Dict[SExpWrapper, SchemeObjectType]:
         return copy.copy(self._expr_types)
 
-    def _get_expr_type(self, expr: sexp.SExp) -> SchemeObjectType:
+    def get_expr_type(self, expr: sexp.SExp) -> SchemeObjectType:
         return self._expr_types[SExpWrapper(expr)]
 
     def _set_expr_type(self, expr: sexp.SExp, type_: SchemeObjectType) -> None:
         self._expr_types[SExpWrapper(expr)] = type_
 
-    def _expr_type_known(self, expr: sexp.SExp) -> bool:
+    def expr_type_known(self, expr: sexp.SExp) -> bool:
         return SExpWrapper(expr) in self._expr_types
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
@@ -106,7 +106,7 @@ class FunctionTypeAnalyzer(Visitor):
 
             self._function_type = SchemeFunctionType(
                 len(func.params),
-                self._get_expr_type(list(func.body)[-1])
+                self.get_expr_type(list(func.body)[-1])
             )
             self._set_expr_type(func, self._function_type)
 
@@ -139,8 +139,8 @@ class FunctionTypeAnalyzer(Visitor):
 
     def visit_SCall(self, call: sexp.SCall) -> None:
         super().visit_SCall(call)
-        if self._expr_type_known(call.func):
-            func_type = self._get_expr_type(call.func)
+        if self.expr_type_known(call.func):
+            func_type = self.get_expr_type(call.func)
             if isinstance(func_type, SchemeFunctionType):
                 self._set_expr_type(call, func_type.return_type)
             else:
@@ -151,8 +151,8 @@ class FunctionTypeAnalyzer(Visitor):
     def visit_SConditional(self, cond: sexp.SConditional) -> None:
         super().visit_SConditional(cond)
 
-        then_type = self._get_expr_type(cond.then_expr)
-        else_type = self._get_expr_type(cond.else_expr)
+        then_type = self.get_expr_type(cond.then_expr)
+        else_type = self.get_expr_type(cond.else_expr)
         if then_type == else_type:
             self._set_expr_type(cond, then_type)
         else:
