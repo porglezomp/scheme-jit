@@ -352,15 +352,13 @@ class CallInst(Inst):
         if self.specialization:
             assert self.specialization in func.specializations
             specialized = func.specializations[self.specialization]
-            assert specialized.code
-            env[self.dest] = yield from specialized.code.run(func_env)
+            env[self.dest] = yield from specialized.run(func_env)
         else:
             env.stats.specialization_dispatch[id(self)] += 1
             type_tuple = tuple(env[arg].scheme_type() for arg in self.args)
             if type_tuple in func.specializations:
                 specialized = func.specializations[type_tuple]
-                assert specialized.code
-                env[self.dest] = yield from specialized.code.run(func_env)
+                env[self.dest] = yield from specialized.run(func_env)
             else:
                 env[self.dest] = yield from func_code.run(func_env)
 

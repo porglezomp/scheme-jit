@@ -246,7 +246,8 @@ class SFunction(Value):
     code: Optional[bytecode.Function] = None
     is_lambda: bool = False
 
-    specializations: Dict[TypeTuple, SFunction] = field(default_factory=dict)
+    specializations: Dict[TypeTuple, bytecode.Function] = \
+        field(default_factory=dict)
 
     def type_name(self) -> SSym:
         return SSym('function')
