@@ -8,7 +8,8 @@ from visitor import Visitor
 
 @dataclass(frozen=True)
 class SchemeObjectType:
-    pass
+    def __lt__(self, other: Any) -> bool:
+        return issubclass(type(self), type(other))
 
 
 SchemeObject = SchemeObjectType()
@@ -50,11 +51,26 @@ SchemeSym = SchemeSymType()
 class SchemeVectType(SchemeObjectType):
     length: Optional[int]
 
+    def __lt__(self, other: Any) -> bool:
+        if isinstance(other, SchemeVectType):
+            return other.length is None or self.length == other.length
+
+        return super().__lt__(other)
+
 
 @dataclass(frozen=True)
 class SchemeFunctionType(SchemeObjectType):
     arity: Optional[int]
     return_type: SchemeObjectType = SchemeObject
+
+    def __lt__(self, other: Any) -> bool:
+        if isinstance(other, SchemeFunctionType):
+            return (
+                (other.arity is None or self.arity == other.arity)
+                and self.return_type < other.return_type
+            )
+
+        return super().__lt__(other)
 
 
 @dataclass(frozen=True)

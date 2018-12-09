@@ -66,16 +66,13 @@ class FunctionEmitter(Visitor):
 
         emitted_func = bytecode.Function(
             [bytecode.Var(param.name) for param in func.params],
-            start_block,
-            emitter.end_block
+            start_block
         )
 
         self._emitted_func = emitted_func
 
 
 class ExpressionEmitter(Visitor):
-    result: bytecode.Parameter
-
     def __init__(self, parent_block: bytecode.BasicBlock,
                  bb_names: Iterator[str],
                  var_names: Iterator[str],
@@ -98,6 +95,17 @@ class ExpressionEmitter(Visitor):
         self.quoted = quoted
         self._tail_calls = tail_calls
         self._expr_types = expr_types
+
+        self._result: Optional[bytecode.Parameter] = None
+
+    @property
+    def result(self) -> bytecode.Parameter:
+        assert self._result is not None, 'ExpressionEmitter has no result'
+        return self._result
+
+    @result.setter
+    def result(self, val: bytecode.Parameter) -> None:
+        self._result = val
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         assert func.is_lambda, 'Nested named functions not supported'
@@ -260,6 +268,7 @@ class ExpressionEmitter(Visitor):
 
         if call.func == sexp.SSym('assert') and len(call.args) == 1:
             if self._is_true_type_assertion(call.args[0]):
+                self.result = bytecode.NumLit(sexp.SNum(0))
                 return
 
         is_tail_call = (self._tail_calls is not None
@@ -361,8 +370,8 @@ class ExpressionEmitter(Visitor):
         if not self._expr_types.expr_type_known(type_query_arg):
             return False
 
-        return (self._TYPE_QUERIES[cast(sexp.SSym, assert_arg.func)]
-                == self._expr_types.get_expr_type(type_query_arg))
+        return (self._expr_types.get_expr_type(type_query_arg)
+                < self._TYPE_QUERIES[cast(sexp.SSym, assert_arg.func)])
 
     _TYPE_QUERIES: Dict[sexp.SSym, scheme_types.SchemeObjectType] = {
         sexp.SSym('number?'): scheme_types.SchemeNum,

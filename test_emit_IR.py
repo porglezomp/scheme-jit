@@ -1,7 +1,9 @@
 import unittest
+from typing import Dict, Optional
 
 import bytecode
 import emit_IR
+import find_tail_calls
 import runner
 import scheme_types
 import sexp
@@ -226,13 +228,11 @@ class EmitExpressionTestCase(unittest.TestCase):
         prog = sexp.parse('((lambda (spam) spam) 42)')
         self.expr_emitter.visit(prog)
 
-        start_end_block = bytecode.BasicBlock(
-            'bb0', [bytecode.ReturnInst(bytecode.Var('spam'))]
-        )
         expected_lambda = bytecode.Function(
             [bytecode.Var('spam')],
-            start_end_block,
-            start_end_block
+            bytecode.BasicBlock(
+                'bb0', [bytecode.ReturnInst(bytecode.Var('spam'))]
+            )
         )
 
         lambda_lookup_var = bytecode.Var('v0')
@@ -671,11 +671,11 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         self.function_emitter.visit(prog)
 
         return_var = bytecode.Var('spam')
-        start_end_block = bytecode.BasicBlock(
-            'bb0', [bytecode.ReturnInst(return_var)]
-        )
         expected = bytecode.Function(
-            [return_var], start_end_block, start_end_block
+            [return_var],
+            bytecode.BasicBlock(
+                'bb0', [bytecode.ReturnInst(return_var)]
+            )
         )
 
         self.assertEqual(expected, self.function_emitter.get_emitted_func())
@@ -685,21 +685,24 @@ class EmitFunctionDefTestCase(unittest.TestCase):
 
         self.function_emitter.visit(prog[0])
 
-        start_end_block = bytecode.BasicBlock(
-            'bb0',
-            [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(42)))]
+        expected_func = bytecode.Function(
+            [],
+            bytecode.BasicBlock(
+                'bb0',
+                [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(42)))]
+            )
         )
-        expected_func = bytecode.Function([], start_end_block, start_end_block)
         self.assertEqual(
             expected_func, self.function_emitter.get_emitted_func())
 
         self.function_emitter.visit(prog[1])
-        start_end_block = bytecode.BasicBlock(
-            'bb0',
-            [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(43)))]
-        )
         expected_func2 = bytecode.Function(
-            [], start_end_block, start_end_block)
+            [],
+            bytecode.BasicBlock(
+                'bb0',
+                [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(43)))]
+            )
+        )
         self.assertEqual(
             expected_func2, self.function_emitter.get_emitted_func())
 
@@ -708,22 +711,24 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         self.function_emitter.visit(prog)
 
         func_ret_var = bytecode.Var('v0')
-        start_end_block = bytecode.BasicBlock(
-            'bb0',
-            [
-                bytecode.LookupInst(
-                    func_ret_var, bytecode.SymLit(sexp.SSym('__lambda0'))
-                ),
-                bytecode.ReturnInst(func_ret_var)
-            ]
+        expected_func = bytecode.Function(
+            [],
+            bytecode.BasicBlock(
+                'bb0',
+                [
+                    bytecode.LookupInst(
+                        func_ret_var, bytecode.SymLit(sexp.SSym('__lambda0'))
+                    ),
+                    bytecode.ReturnInst(func_ret_var)
+                ]
+            )
         )
-        expected_func = bytecode.Function([], start_end_block, start_end_block)
 
-        start_end_block = bytecode.BasicBlock(
-            'bb0', [bytecode.ReturnInst(bytecode.Var('spam'))]
-        )
         expected_lambda = bytecode.Function(
-            [bytecode.Var('spam')], start_end_block, start_end_block
+            [bytecode.Var('spam')],
+            bytecode.BasicBlock(
+               'bb0', [bytecode.ReturnInst(bytecode.Var('spam'))]
+            )
         )
 
         self.assertEqual(expected_func,
@@ -735,7 +740,7 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         self.assertEqual(expected_lambda, actual_lambda.code)
 
 
-class EmitSpecializedFuncTestCase(unittest.TestCase):
+class EmitOptimizedFuncTestCase(unittest.TestCase):
     env: bytecode.EvalEnv
 
     def setUp(self) -> None:
@@ -744,108 +749,502 @@ class EmitSpecializedFuncTestCase(unittest.TestCase):
         runner.add_builtins(self.env)
         runner.add_prelude(self.env)
 
+    def get_optimized_func_bytecode(
+            self, code_str: str,
+            param_types: Optional[Dict[sexp.SSym,
+                                       scheme_types.SchemeObjectType]] = None,
+            optimize_tail_calls: bool = False) -> str:
+        [func] = sexp.parse(code_str)
+        assert isinstance(func, sexp.SFunction)
+
+        tail_calls = None
+        if optimize_tail_calls:
+            tail_call_finder = find_tail_calls.TailCallFinder()
+            tail_call_finder.visit(func)
+            tail_calls = tail_call_finder.tail_calls
+
+        # Make sure func is in global env
+        emitter = emit_IR.FunctionEmitter(self.env._global_env)
+        emitter.visit(func)
+        func.code = emitter.get_emitted_func()
+        self.env._global_env[func.name] = func
+
+        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            param_types={} if param_types is None else param_types,
+            global_env=self.env._global_env)
+        type_analyzer.visit(func)
+
+        optimizing_emitter = emit_IR.FunctionEmitter(
+            self.env._global_env,
+            tail_calls=tail_calls,
+            expr_types=type_analyzer)
+        optimizing_emitter.visit(func)
+
+        return str(optimizing_emitter.get_emitted_func())
+
+    # -------------------------------------------------------------------------
+
     def test_partially_specialized_plus(self) -> None:
-        prog = sexp.parse('''
+        code = '''
             (define (plus first second)
                 (assert (number? first))
                 (assert (number? second))
                 (inst/+ first second)
-            )''')
-
-        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
             param_types={
                 sexp.SSym('first'): scheme_types.SchemeNum,
                 sexp.SSym('second'): scheme_types.SchemeObject
-            },
-            global_env={}
+            }
         )
-        type_analyzer.visit(prog)
 
-        emitter = emit_IR.FunctionEmitter(
-            self.env._global_env, expr_types=type_analyzer)
-        emitter.visit(prog)
-        print(str(emitter.get_emitted_func()))
+        expected = '''
+function (? first second) entry=bb0
+bb0:
+  v0 = lookup 'assert
+  v1 = lookup 'number?
+  v2 = call v1 (second)
+  v3 = call v0 (v2)
+  v4 = lookup 'inst/+
+  v5 = call v4 (first, second)
+  return v5
+'''
 
-        self.fail()
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
 
     def test_fully_specialized_plus(self) -> None:
-        prog = sexp.parse('''
+        code = '''
             (define (plus first second)
                 (assert (number? first))
                 (assert (number? second))
                 (inst/+ first second)
-            )''')
-
-        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
             param_types={
                 sexp.SSym('first'): scheme_types.SchemeNum,
                 sexp.SSym('second'): scheme_types.SchemeNum
-            },
-            global_env={}
+            }
         )
-        type_analyzer.visit(prog)
 
-        emitter = emit_IR.FunctionEmitter(
-            self.env._global_env, expr_types=type_analyzer)
-        emitter.visit(prog)
-        print(str(emitter.get_emitted_func()))
-        self.fail()
+        expected = '''
+function (? first second) entry=bb0
+bb0:
+  v0 = lookup 'inst/+
+  v1 = call v0 (first, second)
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
 
     def test_fully_specialized_plus_args_are_exprs(self) -> None:
-        prog = sexp.parse('''
+        code = '''
             (define (plus first second)
                 (assert (number? first))
                 (assert (number? second))
                 (inst/+ (+ 1 first) (+ second 1))
-            )''')
-
-        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
             param_types={
                 sexp.SSym('first'): scheme_types.SchemeNum,
                 sexp.SSym('second'): scheme_types.SchemeNum
-            },
-            global_env={}
+            }
         )
-        type_analyzer.visit(prog)
 
-        emitter = emit_IR.FunctionEmitter(
-            self.env._global_env, expr_types=type_analyzer)
-        emitter.visit(prog)
-        print(str(emitter.get_emitted_func()))
-        self.fail()
+        expected = '''
+function (? first second) entry=bb0
+bb0:
+  v0 = lookup 'inst/+
+  v1 = lookup '+
+  v2 = call v1 (1, first)
+  v3 = lookup '+
+  v4 = call v3 (second, 1)
+  v5 = call v0 (v2, v4)
+  return v5
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
 
     def test_specialize_in_bounds_vector_access(self) -> None:
         self.fail()
 
+    # -------------------------------------------------------------------------
+
     def test_call_inst_in_specialized_func_includes_types(self) -> None:
         self.fail()
 
-    def test_removed_arity_check(self) -> None:
-        self.fail()
+    # -------------------------------------------------------------------------
 
-    def test_removed_is_func_check_param_is_func(self) -> None:
-        self.fail()
+    def test_removed_is_func_and_arity_check_param_is_func(self) -> None:
+        code = '''
+            (define (spam func)
+                (func 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(1)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  v0 = call func (42)
+  return v0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_check_param_is_func_wrong_num_args(self) -> None:
+        code = '''
+            (define (spam func)
+                (func 42 43)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(1)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  v0 = arity func
+  v1 = Binop.NUM_EQ v0 2
+  brn v1 wrong_arity
+  v2 = call func (42, 43)
+  return v2
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_check_param_is_func_arity_unknown(self) -> None:
+        code = '''
+            (define (spam func)
+                (func 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(None)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  v0 = arity func
+  v1 = Binop.NUM_EQ v0 1
+  brn v1 wrong_arity
+  v2 = call func (42)
+  return v2
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_and_arity_check_lambda_call(self) -> None:
+        code = '''
+            (define (spam)
+                ((lambda (egg) egg) 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup '__lambda0
+  v1 = call v0 (42)
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
 
     def test_removed_is_func_check_lambda_call(self) -> None:
-        self.fail()
+        code = '''
+            (define (spam)
+                ((lambda (egg) egg) 42 43)
+            )'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup '__lambda0
+  v1 = arity v0
+  v2 = Binop.NUM_EQ v1 2
+  brn v2 wrong_arity
+  v3 = call v0 (42, 43)
+  return v3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
 
     def test_removed_is_func_and_arity_check_user_func_call(self) -> None:
-        [prog] = sexp.parse('''(define (spam) (spam))''')
-        assert isinstance(prog, sexp.SFunction)
-        emitter = emit_IR.FunctionEmitter(self.env._global_env)
-        emitter.visit(prog)
-        prog.code = emitter.get_emitted_func()
-        self.env._global_env[sexp.SSym('spam')] = prog
+        code = '''(define (spam) (spam))'''
+        optimized = self.get_optimized_func_bytecode(code)
 
-        type_analyzer = scheme_types.FunctionTypeAnalyzer(
-            param_types={}, global_env=self.env._global_env)
-        type_analyzer.visit(prog)
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = call v0 ()
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
 
-        specialized_emitter = emit_IR.FunctionEmitter(
-            self.env._global_env, expr_types=type_analyzer)
-        specialized_emitter.visit(prog)
-        print(str(specialized_emitter.get_emitted_func()))
-        self.fail()
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_check_user_func_call(self) -> None:
+        code = '''(define (spam) (spam 42))'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = arity v0
+  v2 = Binop.NUM_EQ v1 1
+  brn v2 wrong_arity
+  v3 = call v0 (42)
+  return v3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_and_arity_check_builtin_func_call(self) -> None:
+        code = '''(define (spam) (+ 3 4))'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup '+
+  v1 = call v0 (3, 4)
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
 
     def test_removed_is_func_check_builtin_func_call(self) -> None:
-        self.fail()
+        code = '''(define (spam) (bool? 3 4))'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'bool?
+  v1 = arity v0
+  v2 = Binop.NUM_EQ v1 2
+  brn v2 wrong_arity
+  v3 = call v0 (3, 4)
+  return v3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_would_be_tail_call_wrong_arity(self) -> None:
+        code = '''(define (spam) (spam 42))'''
+        optimized = self.get_optimized_func_bytecode(
+            code, optimize_tail_calls=True)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = arity v0
+  v2 = Binop.NUM_EQ v1 1
+  brn v2 wrong_arity
+  v3 = call v0 (42)
+  return v3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_tail_call_right_arity(self) -> None:
+        code = '''(define (spam egg) (spam 42))'''
+        optimized = self.get_optimized_func_bytecode(
+            code, optimize_tail_calls=True)
+
+        expected = '''
+function (? egg) entry=bb0
+bb0:
+  egg = 42
+  jmp bb0
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_remove_is_function_assertion_arity_known(self) -> None:
+        code = '''(define (spam func) (assert (function? func)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(1)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_remove_is_function_assertion_arity_unknown(self) -> None:
+        code = '''(define (spam func) (assert (function? func)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(None)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_non_func_assertion_not_removed(self) -> None:
+        code = '''(define (spam func) (assert (function? func)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeObject
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  v0 = lookup 'assert
+  v1 = lookup 'function?
+  v2 = call v1 (func)
+  v3 = call v0 (v2)
+  return v3
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_remove_is_vector_assertion_size_known(self) -> None:
+        code = '''(define (spam vec) (assert (vector? vec)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('vec'): scheme_types.SchemeVectType(4)
+            }
+        )
+
+        expected = '''
+function (? vec) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_remove_is_vector_assertion_size_unknown(self) -> None:
+        code = '''(define (spam vec) (assert (vector? vec)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('vec'): scheme_types.SchemeVectType(None)
+            }
+        )
+
+        expected = '''
+function (? vec) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_remove_pair_assertion(self) -> None:
+        code = '''(define (spam vec) (assert (pair? vec)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('vec'): scheme_types.SchemeVectType(2)
+            }
+        )
+
+        expected = '''
+function (? vec) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_remove_nil_assertion(self) -> None:
+        code = '''(define (spam vec) (assert (nil? vec)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('vec'): scheme_types.SchemeVectType(0)
+            }
+        )
+
+        expected = '''
+function (? vec) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_non_vec_assert_not_removed(self) -> None:
+        code = '''(define (spam egg) (assert (vector? egg)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('egg'): scheme_types.SchemeObject
+            }
+        )
+
+        expected = '''
+function (? egg) entry=bb0
+bb0:
+  v0 = lookup 'assert
+  v1 = lookup 'vector?
+  v2 = call v1 (egg)
+  v3 = call v0 (v2)
+  return v3
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())

@@ -21,7 +21,7 @@ def add_intrinsics(eval_env: EvalEnv) -> None:
             begin.add_inst(inst)
         if return_val is not None:
             begin.add_inst(bytecode.ReturnInst(return_val))
-        code = Function(params, begin, begin)
+        code = Function(params, begin)
         param_syms = [SSym(p.name) for p in params]
         return SFunction(name, param_syms, Nil, code, False)
 

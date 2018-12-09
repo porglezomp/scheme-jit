@@ -527,7 +527,6 @@ class ReturnBlock(BB):
 class Function:
     params: List[Var]
     start: BB
-    end: BB
 
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, Value]:
         assert all(p in env for p in self.params)
@@ -552,9 +551,9 @@ class Function:
         while blocks:
             block = blocks.pop()
             yield block
+            visited.add(id(block))
             for b in block.successors():
                 if id(b) not in visited:
-                    visited.add(id(b))
                     blocks.append(b)
 
     def __str__(self) -> str:
