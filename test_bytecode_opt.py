@@ -18,9 +18,8 @@ def make_func() -> bytecode.Function:
 
 
 class OptTestCase(unittest.TestCase):
-    def test_split_block(self) -> None:
-        func = make_func()
-        self.assertEqual(str(func), '''function (?) entry=bb0
+    def test_baseline(self) -> None:
+        self.assertEqual(str(make_func()), '''function (?) entry=bb0
 bb0:
   v0 = 42
   v1 = Binop.ADD v0 69
@@ -29,6 +28,8 @@ bb0:
 bb1:
   return v1''')
 
+    def test_split_block(self) -> None:
+        func = make_func()
         func.start.split_after(0)
         self.assertEqual(str(func), '''function (?) entry=bb0
 bb0:
@@ -44,17 +45,7 @@ bb1:
 
     def test_mark_vars(self) -> None:
         opt = FunctionOptimizer()
-        func = make_func()
-        self.assertEqual(str(func), '''function (?) entry=bb0
-bb0:
-  v0 = 42
-  v1 = Binop.ADD v0 69
-  jmp bb1
-
-bb1:
-  return v1''')
-
-        func = opt.mark_vars(func)
+        func = opt.mark_vars(make_func())
         self.assertEqual(str(func), '''function (?) entry=inl0@bb0
 inl0@bb0:
   inl0@v0 = 42
