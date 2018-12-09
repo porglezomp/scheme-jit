@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from queue import Queue
 from typing import (Any, Counter, Dict, Generator, Generic, Iterable, Iterator,
                     List, Optional, Set, TypeVar)
 
@@ -30,6 +31,13 @@ class TypeMap:
         parts = ', '.join(f"{k.name}: {v}" for k, v in self.types.items())
         return f"TypeMap({{{parts}}})"
 
+    def join(self, other: TypeMap) -> TypeMap:
+        result = TypeMap()
+        for key in self.types:
+            if key in other.types:
+                result[key] = self[key].join(other[key])
+        return result
+
 
 @dataclass
 class ValueMap:
@@ -50,6 +58,14 @@ class ValueMap:
     def __repr__(self) -> str:
         parts = ', '.join(f"{k.name}: {v}" for k, v in self.values.items())
         return f"ValueMap({{{parts}}})"
+
+    def join(self, other: ValueMap) -> ValueMap:
+        result = ValueMap()
+        for key in self.values:
+            if key in other.values:
+                if self[key] == other[key]:
+                    result[key] = self[key]
+        return result
 
 
 class Parameter(ABC):
@@ -299,8 +315,8 @@ class BinopInst(Inst):
         else:
             raise ValueError(f"Unexpected op {self.op}")
 
-        values[self.dest] = None
         lhs, rhs = values[self.lhs], values[self.rhs]
+        values[self.dest] = None
         if lhs is None or rhs is None:
             # Cannot do any constant folding
             return
@@ -858,18 +874,18 @@ class Function:
     def blocks(self) -> Iterator[BasicBlock]:
         """
         Iterate over the basic blocks in some order.
-
-        Ideally this would be the preorder traversal of the dom-tree.
         """
         visited: Set[int] = set()
-        blocks: List[BasicBlock] = [self.start]
-        while blocks:
-            block = blocks.pop()
+        blocks: Queue[BasicBlock] = Queue()
+        blocks.put(self.start)
+        while not blocks.empty():
+            block = blocks.get()
             yield block
+            visited.add(id(block))
             for b in block.successors():
                 if id(b) not in visited:
                     visited.add(id(b))
-                    blocks.append(b)
+                    blocks.put(b)
 
     def __str__(self) -> str:
         return (f"function (?{''.join(' ' + x.name for x in self.params)})"

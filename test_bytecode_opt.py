@@ -1,24 +1,68 @@
 import unittest
-from typing import DefaultDict
+from typing import DefaultDict, Tuple
 
 import bytecode
 import runner
 import sexp
-from bytecode import Binop, NumLit, TypeMap, ValueMap, Var
+from bytecode import (BasicBlock, Binop, Function, NumLit, SymLit, TypeMap,
+                      ValueMap, Var)
 from optimization import FunctionOptimizer
-from scheme_types import SchemeNum
+from scheme_types import SchemeNum, SchemeObject, SchemeSym
 from sexp import SNum, SSym
 
 
-def make_func() -> bytecode.Function:
-    bb0 = bytecode.BasicBlock("bb0")
-    bb1 = bytecode.BasicBlock("bb1")
+def make_func() -> Function:
+    bb0 = BasicBlock("bb0")
+    bb1 = BasicBlock("bb1")
     bb0.add_inst(bytecode.CopyInst(Var('v0'), NumLit(SNum(42))))
     bb0.add_inst(bytecode.BinopInst(
         Var('v1'), Binop.ADD, Var('v0'), NumLit(SNum(69))))
     bb0.add_inst(bytecode.JmpInst(bb1))
     bb1.add_inst(bytecode.ReturnInst(Var('v1')))
-    return bytecode.Function([], bb0)
+    return Function([], bb0)
+
+
+def make_branch_func_int() -> Tuple[Function, Tuple[BasicBlock, ...]]:
+    bb0 = BasicBlock("bb0")
+    bb1 = BasicBlock("bb1")
+    bb2 = BasicBlock("bb2")
+    bb3 = BasicBlock("bb3")
+    bb0.add_inst(bytecode.CopyInst(Var('v0'), NumLit(SNum(42))))
+    bb0.add_inst(bytecode.BrInst(Var('x'), bb1))
+    bb0.add_inst(bytecode.JmpInst(bb2))
+    bb1.add_inst(bytecode.BinopInst(
+        Var('v0'), Binop.ADD, Var('v0'), NumLit(SNum(27))))
+    bb1.add_inst(bytecode.JmpInst(bb3))
+    bb2.add_inst(bytecode.BinopInst(
+        Var('v0'), Binop.MUL, Var('v0'), NumLit(SNum(10))))
+    bb2.add_inst(bytecode.JmpInst(bb3))
+    bb3.add_inst(bytecode.ReturnInst(Var('v0')))
+    return Function([Var('x')], bb0), (bb0, bb1, bb2, bb3)
+
+
+def make_branch_func_object() -> Tuple[Function, Tuple[BasicBlock, ...]]:
+    bb0 = BasicBlock("bb0")
+    bb1 = BasicBlock("bb1")
+    bb2 = BasicBlock("bb2")
+    bb3 = BasicBlock("bb3")
+    bb0.add_inst(bytecode.CopyInst(Var('v0'), NumLit(SNum(42))))
+    bb0.add_inst(bytecode.BrInst(Var('x'), bb1))
+    bb0.add_inst(bytecode.JmpInst(bb2))
+    bb1.add_inst(bytecode.BinopInst(
+        Var('v0'), Binop.ADD, Var('v0'), NumLit(SNum(27))))
+    bb1.add_inst(bytecode.JmpInst(bb3))
+    bb2.add_inst(bytecode.CopyInst(Var('v0'), SymLit(SSym('hi'))))
+    bb2.add_inst(bytecode.JmpInst(bb3))
+    bb3.add_inst(bytecode.ReturnInst(Var('v0')))
+    return Function([Var('x')], bb0), (bb0, bb1, bb2, bb3)
+
+
+def get_builtins() -> bytecode.EvalEnv:
+    env = bytecode.EvalEnv()
+    runner.add_intrinsics(env)
+    runner.add_builtins(env)
+    runner.add_prelude(env)
+    return env
 
 
 class OptTestCase(unittest.TestCase):
@@ -93,3 +137,73 @@ inl0@bb1:
             (TypeMap({Var('v0'): SchemeNum, Var('v1'): SchemeNum}),
              ValueMap({Var('v0'): SNum(42), Var('v1'): SNum(111)})),
         ])
+
+    def test_dataflow_stable_type(self) -> None:
+        func, blocks = make_branch_func_int()
+        bb0, bb1, bb2, bb3 = blocks
+        opt = FunctionOptimizer(func)
+        opt.compute_dataflow()
+        after_0 = (TypeMap({Var('v0'): SchemeNum}),
+                   ValueMap({Var('v0'): SNum(42)}))
+        self.assertEqual(opt.block_input_maps(bb1), after_0)
+        self.assertEqual(opt.block_input_maps(bb2), after_0)
+        self.assertEqual(
+            opt.block_input_maps(bb3),
+            (TypeMap({Var('v0'): SchemeNum}), ValueMap()),
+        )
+        self.assertEqual(opt.info, {
+            id(bb0): [(TypeMap(), ValueMap()), after_0, after_0, after_0],
+            id(bb1): [
+                after_0,
+                (TypeMap({Var('v0'): SchemeNum}),
+                 ValueMap({Var('v0'): SNum(69)})),
+                (TypeMap({Var('v0'): SchemeNum}),
+                 ValueMap({Var('v0'): SNum(69)})),
+            ],
+            id(bb2): [
+                after_0,
+                (TypeMap({Var('v0'): SchemeNum}),
+                 ValueMap({Var('v0'): SNum(420)})),
+                (TypeMap({Var('v0'): SchemeNum}),
+                 ValueMap({Var('v0'): SNum(420)})),
+            ],
+            id(bb3): [
+                (TypeMap({Var('v0'): SchemeNum}), ValueMap()),
+                (TypeMap({Var('v0'): SchemeNum}), ValueMap()),
+            ],
+        })
+
+    def test_dataflow_unstable_type(self) -> None:
+        func, blocks = make_branch_func_object()
+        bb0, bb1, bb2, bb3 = blocks
+        opt = FunctionOptimizer(func)
+        opt.compute_dataflow()
+        after_0 = (TypeMap({Var('v0'): SchemeNum}),
+                   ValueMap({Var('v0'): SNum(42)}))
+        self.assertEqual(opt.block_input_maps(bb1), after_0)
+        self.assertEqual(opt.block_input_maps(bb2), after_0)
+        self.assertEqual(
+            opt.block_input_maps(bb3),
+            (TypeMap({Var('v0'): SchemeObject}), ValueMap()),
+        )
+        self.assertEqual(opt.info, {
+            id(bb0): [(TypeMap(), ValueMap()), after_0, after_0, after_0],
+            id(bb1): [
+                after_0,
+                (TypeMap({Var('v0'): SchemeNum}),
+                 ValueMap({Var('v0'): SNum(69)})),
+                (TypeMap({Var('v0'): SchemeNum}),
+                 ValueMap({Var('v0'): SNum(69)})),
+            ],
+            id(bb2): [
+                after_0,
+                (TypeMap({Var('v0'): SchemeSym}),
+                 ValueMap({Var('v0'): SSym('hi')})),
+                (TypeMap({Var('v0'): SchemeSym}),
+                 ValueMap({Var('v0'): SSym('hi')})),
+            ],
+            id(bb3): [
+                (TypeMap({Var('v0'): SchemeObject}), ValueMap()),
+                (TypeMap({Var('v0'): SchemeObject}), ValueMap()),
+            ],
+        })

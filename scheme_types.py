@@ -15,6 +15,11 @@ class SchemeObjectType:
     def __str__(self) -> str:
         return 'object'
 
+    def join(self, other: SchemeObjectType) -> SchemeObjectType:
+        if self == other:
+            return self
+        return SchemeObject
+
 
 SchemeObject = SchemeObjectType()
 
@@ -75,6 +80,13 @@ class SchemeVectType(SchemeObjectType):
             return f'vector[{self.length}]'
         return 'vector'
 
+    def join(self, other: SchemeObjectType) -> SchemeObjectType:
+        if isinstance(other, SchemeVectType):
+            if self.length == other.length:
+                return SchemeVectType(self.length)
+            return SchemeVectType(None)
+        return SchemeObject
+
 
 @dataclass(frozen=True)
 class SchemeFunctionType(SchemeObjectType):
@@ -87,6 +99,13 @@ class SchemeFunctionType(SchemeObjectType):
         if self.arity is not None:
             return f'function[{self.arity}]'
         return 'function'
+
+    def join(self, other: SchemeObjectType) -> SchemeObjectType:
+        if isinstance(other, SchemeFunctionType):
+            if self.arity == other.arity:
+                return SchemeFunctionType(self.arity)
+            return SchemeFunctionType(None)
+        return SchemeObject
 
 
 @dataclass(frozen=True)
