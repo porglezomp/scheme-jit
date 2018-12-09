@@ -50,7 +50,7 @@ class SNum(Value):
         return self.value
 
     def scheme_type(self) -> scheme_types.SchemeNumType:
-        return scheme_types.SchemeNumType(value)
+        return scheme_types.SchemeNumType(self.value)
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ class SBool(Value):
         return id(self.value)
 
     def scheme_type(self) -> scheme_types.SchemeBoolType:
-        return scheme_types.SchemeBool
+        return scheme_types.SchemeBoolType(self.value)
 
 
 @dataclass(frozen=True)
@@ -89,7 +89,7 @@ class SSym(Value):
         return id(self.name)
 
     def scheme_type(self) -> scheme_types.SchemeSymType:
-        return scheme_types.SchemeSym
+        return scheme_types.SchemeSymType(self.name)
 
 
 @dataclass(frozen=True)

@@ -50,7 +50,13 @@ SchemeNum = SchemeNumType()
 
 @dataclass(frozen=True)
 class SchemeBoolType(SchemeObjectType):
-    pass
+    value: Optional[bool] = None
+
+    def join_with(self, other: object) -> SchemeObjectType:
+        if isinstance(other, SchemeBoolType):
+            return self if self.value == other.value else SchemeBool
+
+        return super().join_with(other)
 
 
 SchemeBool = SchemeBoolType()
@@ -58,7 +64,13 @@ SchemeBool = SchemeBoolType()
 
 @dataclass(frozen=True)
 class SchemeSymType(SchemeObjectType):
-    pass
+    value: Optional[str] = None
+
+    def join_with(self, other: object) -> SchemeObjectType:
+        if isinstance(other, SchemeBoolType):
+            return self if self.value == other.value else SchemeSym
+
+        return super().join_with(other)
 
 
 SchemeSym = SchemeSymType()
@@ -169,7 +181,7 @@ class FunctionTypeAnalyzer(Visitor):
         self._set_expr_type(num, SchemeNumType(num.value))
 
     def visit_SBool(self, sbool: sexp.SBool) -> None:
-        self._set_expr_type(sbool, SchemeBoolType())
+        self._set_expr_type(sbool, SchemeBoolType(sbool.value))
 
     def visit_SSym(self, sym: sexp.SSym) -> None:
         if sym in self._param_types:
@@ -191,11 +203,11 @@ class FunctionTypeAnalyzer(Visitor):
         type_: SchemeObjectType
         if isinstance(quote.expr, sexp.SPair) and quote.expr.is_list():
             # Quoted lists are turned into pairs
-            type_ = SchemeVectType(2)
+            self._set_expr_type(quote, SchemeVectType(2))
+        elif isinstance(quote.expr, sexp.SSym):
+            self._set_expr_type(quote, SchemeSymType(quote.expr.name))
         else:
-            type_ = SchemeQuotedType(type(quote.expr))
-
-        self._set_expr_type(quote, type_)
+            self._set_expr_type(quote, SchemeQuotedType(type(quote.expr)))
 
     def visit_SCall(self, call: sexp.SCall) -> None:
         super().visit_SCall(call)
@@ -216,9 +228,16 @@ class FunctionTypeAnalyzer(Visitor):
     def visit_SConditional(self, cond: sexp.SConditional) -> None:
         super().visit_SConditional(cond)
 
+        conditional_type = self.get_expr_type(cond.test)
         then_type = self.get_expr_type(cond.then_expr)
         else_type = self.get_expr_type(cond.else_expr)
-        self._set_expr_type(cond, then_type.join_with(else_type))
+        if (not isinstance(conditional_type, SchemeBoolType)
+                or conditional_type.value is None):
+            self._set_expr_type(cond, then_type.join_with(else_type))
+        elif conditional_type.value:
+            self._set_expr_type(cond, then_type)
+        else:
+            self._set_expr_type(cond, else_type)
 
 
 _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {

@@ -14,7 +14,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
-        self.assertEqual([scheme_types.SchemeQuotedType(sexp.SSym)], types)
+        self.assertEqual([scheme_types.SchemeSymType('spam')], types)
 
     def test_quoted_list(self) -> None:
         prog = sexp.parse("'(1 2 3)")
@@ -33,12 +33,19 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         self.assertEqual([scheme_types.SchemeNumType(42)], types)
 
     def test_bool_literal(self) -> None:
-        prog = sexp.parse("true")
-        analyzer = FunctionTypeAnalyzer({}, {})
+        prog = sexp.parse("true false booly")
+        analyzer = FunctionTypeAnalyzer(
+            {sexp.SSym('booly'): scheme_types.SchemeBool}, {}
+        )
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
-        self.assertEqual([scheme_types.SchemeBool], types)
+        expected = [
+            scheme_types.SchemeBoolType(True),
+            scheme_types.SchemeBoolType(False),
+            scheme_types.SchemeBool
+        ]
+        self.assertEqual(expected, types)
 
     def test_sym_literal_not_function(self) -> None:
         prog = sexp.parse("spam")
@@ -149,41 +156,69 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         self.assertEqual(expected, types)
 
     def test_conditional_same_type_branches(self) -> None:
+        prog = sexp.parse("(if spam true false)")
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            scheme_types.SchemeObject,
+            scheme_types.SchemeBoolType(True),
+            scheme_types.SchemeBoolType(False),
+            scheme_types.SchemeBool,
+        ]
+        self.assertEqual(expected, types)
+
+    def test_conditional_test_true_type_is_then_branch(self) -> None:
         prog = sexp.parse("(if true true false)")
         analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
-            scheme_types.SchemeBool,
-            scheme_types.SchemeBool,
-            scheme_types.SchemeBool,
+            scheme_types.SchemeBoolType(True),
+            scheme_types.SchemeBoolType(True),
+            scheme_types.SchemeBoolType(False),
+            scheme_types.SchemeBoolType(True),
         ]
         self.assertEqual(expected, types)
 
-    def test_conditional_different_type_branches(self) -> None:
-        prog = sexp.parse("(if true 42 false)")
+    def test_conditional_test_false_type_is_else_branch(self) -> None:
+        prog = sexp.parse("(if false true false)")
         analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
+            scheme_types.SchemeBoolType(False),
+            scheme_types.SchemeBoolType(True),
+            scheme_types.SchemeBoolType(False),
+            scheme_types.SchemeBoolType(False),
+        ]
+        self.assertEqual(expected, types)
+
+    def test_conditional_different_type_branches(self) -> None:
+        prog = sexp.parse("(if spam 42 false)")
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            scheme_types.SchemeObject,
             scheme_types.SchemeNumType(42),
-            scheme_types.SchemeBool,
+            scheme_types.SchemeBoolType(False),
             scheme_types.SchemeObject,
         ]
         self.assertEqual(expected, types)
 
     def test_conditional_exact_num_type_branches(self) -> None:
-        prog = sexp.parse("(if true 42 42)")
+        prog = sexp.parse("(if spam 42 42)")
         analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
+            scheme_types.SchemeObject,
             scheme_types.SchemeNumType(42),
             scheme_types.SchemeNumType(42),
             scheme_types.SchemeNumType(42),
@@ -191,13 +226,13 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         self.assertEqual(expected, types)
 
     def test_conditional_inexact_num_type_branches(self) -> None:
-        prog = sexp.parse("(if true 42 43)")
+        prog = sexp.parse("(if spam 42 43)")
         analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
+            scheme_types.SchemeObject,
             scheme_types.SchemeNumType(42),
             scheme_types.SchemeNumType(43),
             scheme_types.SchemeNum,
@@ -207,13 +242,13 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
     def test_conditional_exact_func_type_branches(self) -> None:
         env = bytecode.EvalEnv()
         runner.add_builtins(env)
-        prog = sexp.parse("(if true number? number?)")
+        prog = sexp.parse("(if spam number? number?)")
         analyzer = FunctionTypeAnalyzer({}, env._global_env)
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
+            scheme_types.SchemeObject,
             scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
             scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
             scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
@@ -223,13 +258,13 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
     def test_conditional_inexact_func_type_branches(self) -> None:
         env = bytecode.EvalEnv()
         runner.add_builtins(env)
-        prog = sexp.parse("(if true number? number=)")
+        prog = sexp.parse("(if spam number? number=)")
         analyzer = FunctionTypeAnalyzer({}, env._global_env)
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
+            scheme_types.SchemeObject,
             scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
             scheme_types.SchemeFunctionType(2, scheme_types.SchemeBool),
             scheme_types.SchemeFunctionType(None, scheme_types.SchemeBool),
@@ -239,13 +274,13 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
     def test_conditional_inexact_func_return_type_branches(self) -> None:
         env = bytecode.EvalEnv()
         runner.add_builtins(env)
-        prog = sexp.parse("(if true number< +)")
+        prog = sexp.parse("(if egg number< +)")
         analyzer = FunctionTypeAnalyzer({}, env._global_env)
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
+            scheme_types.SchemeObject,
             scheme_types.SchemeFunctionType(2, scheme_types.SchemeBool),
             scheme_types.SchemeFunctionType(2, scheme_types.SchemeNum),
             scheme_types.SchemeFunctionType(2),
@@ -253,13 +288,13 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         self.assertEqual(expected, types)
 
     def test_conditional_exact_vect_type_branches(self) -> None:
-        prog = sexp.parse("(if true [1 2 3] [4 5 6])")
+        prog = sexp.parse("(if spam [1 2 3] [4 5 6])")
         analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
+            scheme_types.SchemeObject,
             scheme_types.SchemeVectType(3),
             scheme_types.SchemeVectType(3),
             scheme_types.SchemeVectType(3),
@@ -267,13 +302,13 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         self.assertEqual(expected, types)
 
     def test_conditional_inexact_vect_type_branches(self) -> None:
-        prog = sexp.parse("(if true [1 2 3] [4 5])")
+        prog = sexp.parse("(if spam [1 2 3] [4 5])")
         analyzer = FunctionTypeAnalyzer({}, {})
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBool,
+            scheme_types.SchemeObject,
             scheme_types.SchemeVectType(3),
             scheme_types.SchemeVectType(2),
             scheme_types.SchemeVectType(None),
@@ -290,7 +325,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
             scheme_types.SchemeFunctionType(
                 2, scheme_types.SchemeVectType(None)),
             scheme_types.SchemeNumType(3),
-            scheme_types.SchemeBool,
+            scheme_types.SchemeBoolType(True),
             scheme_types.SchemeVectType(3),
         ]
         self.assertEqual(expected, types)
@@ -312,7 +347,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
             # size use
             scheme_types.SchemeNumType(4),
-            scheme_types.SchemeBool,
+            scheme_types.SchemeBoolType(True),
 
             # return type
             scheme_types.SchemeVectType(4),
@@ -340,7 +375,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
             # size use
             scheme_types.SchemeNum,
-            scheme_types.SchemeBool,
+            scheme_types.SchemeBoolType(True),
 
             # return type
             scheme_types.SchemeVectType(None),
