@@ -18,6 +18,10 @@ class Parameter(ABC):
     def lookup_self(self, env: Dict[Var, Value]) -> Value:
         ...
 
+    @abstractmethod
+    def freshen(self, prefix: str) -> Parameter:
+        ...
+
 
 class Inst(ABC):
     @abstractmethod
@@ -26,6 +30,10 @@ class Inst(ABC):
 
     def successors(self) -> Iterable[BB]:
         return []
+
+    @abstractmethod
+    def freshen(self, prefix: str) -> None:
+        ...
 
 
 class BB(ABC):
@@ -48,6 +56,9 @@ class Var(Parameter):
     def __str__(self) -> str:
         return self.name
 
+    def freshen(self, prefix: str) -> Var:
+        return Var(f"{prefix}@{self.name}")
+
 
 @dataclass(frozen=True)
 class NumLit(Parameter):
@@ -58,6 +69,9 @@ class NumLit(Parameter):
 
     def __str__(self) -> str:
         return str(self.value)
+
+    def freshen(self, prefix: str) -> NumLit:
+        return self
 
 
 @dataclass(frozen=True)
@@ -70,6 +84,9 @@ class SymLit(Parameter):
     def __str__(self) -> str:
         return f"'{self.value}"
 
+    def freshen(self, prefix: str) -> SymLit:
+        return self
+
 
 @dataclass(frozen=True)
 class BoolLit(Parameter):
@@ -80,6 +97,9 @@ class BoolLit(Parameter):
 
     def __str__(self) -> str:
         return f"'{self.value}"
+
+    def freshen(self, prefix: str) -> BoolLit:
+        return self
 
 
 @dataclass
@@ -208,6 +228,11 @@ class BinopInst(Inst):
     def __str__(self) -> str:
         return f"{self.dest} = {self.op} {self.lhs} {self.rhs}"
 
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.lhs = self.lhs.freshen(prefix)
+        self.rhs = self.rhs.freshen(prefix)
+
 
 @dataclass
 class TypeofInst(Inst):
@@ -220,6 +245,10 @@ class TypeofInst(Inst):
     def __str__(self) -> str:
         return f"{self.dest} = typeof {self.value}"
 
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.value = self.value.freshen(prefix)
+
 
 @dataclass
 class CopyInst(Inst):
@@ -231,6 +260,10 @@ class CopyInst(Inst):
 
     def __str__(self) -> str:
         return f"{self.dest} = {self.value}"
+
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.value = self.value.freshen(prefix)
 
 
 @dataclass
@@ -248,6 +281,10 @@ class LookupInst(Inst):
     def __str__(self) -> str:
         return f"{self.dest} = lookup {self.name}"
 
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.name = self.name.freshen(prefix)
+
 
 @dataclass
 class AllocInst(Inst):
@@ -261,6 +298,10 @@ class AllocInst(Inst):
 
     def __str__(self) -> str:
         return f"{self.dest} = alloc {self.size}"
+
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.size = self.size.freshen(prefix)
 
 
 @dataclass
@@ -281,6 +322,11 @@ class LoadInst(Inst):
     def __str__(self) -> str:
         return f"{self.dest} = load [{self.addr} + {self.offset}]"
 
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.addr = self.addr.freshen(prefix)
+        self.offset = self.offset.freshen(prefix)
+
 
 @dataclass
 class StoreInst(Inst):
@@ -298,6 +344,11 @@ class StoreInst(Inst):
     def __str__(self) -> str:
         return f"store [{self.addr} + {self.offset}] = {self.value}"
 
+    def freshen(self, prefix: str) -> None:
+        self.addr = self.addr.freshen(prefix)
+        self.offset = self.offset.freshen(prefix)
+        self.value = self.value.freshen(prefix)
+
 
 @dataclass
 class LengthInst(Inst):
@@ -312,6 +363,10 @@ class LengthInst(Inst):
     def __str__(self) -> str:
         return f"{self.dest} = length {self.addr}"
 
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.addr = self.addr.freshen(prefix)
+
 
 @dataclass
 class ArityInst(Inst):
@@ -325,6 +380,10 @@ class ArityInst(Inst):
 
     def __str__(self) -> str:
         return f"{self.dest} = arity {self.func}"
+
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.func = self.func.freshen(prefix)
 
 
 @dataclass
@@ -370,6 +429,12 @@ class CallInst(Inst):
             text += f" ({types})"
         return text
 
+    def freshen(self, prefix: str) -> None:
+        self.dest = self.dest.freshen(prefix)
+        self.func = self.func.freshen(prefix)
+        for i in range(len(self.args)):
+            self.args[i] = self.args[i].freshen(prefix)
+
 
 @dataclass
 class JmpInst(Inst):
@@ -386,6 +451,9 @@ class JmpInst(Inst):
 
     def __str__(self) -> str:
         return f"jmp {self.target.name}"
+
+    def freshen(self, prefix: str) -> None:
+        pass
 
 
 @dataclass
@@ -409,6 +477,9 @@ class BrInst(Inst):
     def __str__(self) -> str:
         return f"br {self.cond} {self.target.name}"
 
+    def freshen(self, prefix: str) -> None:
+        self.cond = self.cond.freshen(prefix)
+
 
 @dataclass
 class BrnInst(Inst):
@@ -431,6 +502,9 @@ class BrnInst(Inst):
     def __str__(self) -> str:
         return f"brn {self.cond} {self.target.name}"
 
+    def freshen(self, prefix: str) -> None:
+        self.cond = self.cond.freshen(prefix)
+
 
 @dataclass
 class ReturnInst(Inst):
@@ -441,6 +515,9 @@ class ReturnInst(Inst):
 
     def __str__(self) -> str:
         return f"return {self.ret}"
+
+    def freshen(self, prefix: str) -> None:
+        self.ret = self.ret.freshen(prefix)
 
 
 @dataclass
@@ -453,6 +530,9 @@ class TrapInst(Inst):
     def __str__(self) -> str:
         return f"trap {self.message!r}"
 
+    def freshen(self, prefix: str) -> None:
+        pass
+
 
 @dataclass
 class TraceInst(Inst):
@@ -464,6 +544,9 @@ class TraceInst(Inst):
     def __str__(self) -> str:
         return f"trace {self.value}"
 
+    def freshen(self, prefix: str) -> None:
+        self.value = self.value.freshen(prefix)
+
 
 @dataclass
 class BreakpointInst(Inst):
@@ -472,6 +555,9 @@ class BreakpointInst(Inst):
 
     def __str__(self) -> str:
         return f"breakpoint"
+
+    def freshen(self, prefix: str) -> None:
+        pass
 
 
 @dataclass
@@ -532,11 +618,11 @@ class ReturnBlock(BB):
 @dataclass
 class Function:
     params: List[Var]
-    start: BB
+    start: BasicBlock
 
     def run(self, env: EvalEnv) -> Generator[EvalEnv, None, Value]:
         assert all(p in env for p in self.params)
-        block = self.start
+        block: BB = self.start
         env.stats.function_count[id(self)] += 1
         while True:
             if isinstance(block, BasicBlock):
@@ -553,7 +639,7 @@ class Function:
         Ideally this would be the preorder traversal of the dom-tree.
         """
         visited: Set[int] = set()
-        blocks = [self.start]
+        blocks: List[BB] = [self.start]
         while blocks:
             block = blocks.pop()
             yield block
