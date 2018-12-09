@@ -271,7 +271,20 @@ class ExpressionEmitter(Visitor):
             and isinstance(self._expr_types.get_expr_type(call.func),
                            scheme_types.SchemeFunctionType)
         )
-        if not is_tail_call:
+        arity_known_correct = False
+        if is_known_function:
+            self._expr_types = cast(scheme_types.FunctionTypeAnalyzer,
+                                    self._expr_types)
+            func_type = cast(scheme_types.SchemeFunctionType,
+                             self._expr_types.get_expr_type(call.func))
+            arity_known_correct = func_type.arity == len(call.args)
+        elif is_tail_call:
+            tail_calls = cast(List[TailCallData], self._tail_calls)
+            tail_data = tail_calls[tail_calls.index(TailCallData(call))]
+            arity_known_correct = (
+                len(tail_data.get_func().params) == len(call.args))
+
+        if not is_tail_call or not arity_known_correct:
             func_expr_emitter = ExpressionEmitter(
                 self.parent_block, self.bb_names, self.var_names,
                 self.local_env, self.global_env,
@@ -280,18 +293,10 @@ class ExpressionEmitter(Visitor):
                 expr_types=self._expr_types)
             func_expr_emitter.visit(call.func)
 
-            if not is_known_function:
-                self._add_is_function_check(
-                    func_expr_emitter.result, func_expr_emitter.end_block)
-                self.end_block = func_expr_emitter.end_block
-
-        arity_known_correct = False
-        if is_known_function:
-            self._expr_types = cast(scheme_types.FunctionTypeAnalyzer,
-                                    self._expr_types)
-            func_type = cast(scheme_types.SchemeFunctionType,
-                             self._expr_types.get_expr_type(call.func))
-            arity_known_correct = func_type.arity == len(call.args)
+        if not is_tail_call and not is_known_function:
+            self._add_is_function_check(
+                func_expr_emitter.result, func_expr_emitter.end_block)
+            self.end_block = func_expr_emitter.end_block
 
         if not arity_known_correct:
             self._add_arity_check(
@@ -316,7 +321,7 @@ class ExpressionEmitter(Visitor):
         new_end_block = (arg_emitter.end_block if arg_emitter is not None
                          else func_expr_emitter.end_block)
 
-        if is_tail_call:
+        if is_tail_call and arity_known_correct:
             assert self._tail_calls is not None
             tail_call_data = self._tail_calls[
                 self._tail_calls.index(TailCallData(call))]

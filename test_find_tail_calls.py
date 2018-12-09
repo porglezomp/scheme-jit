@@ -1,6 +1,8 @@
 import unittest
 from typing import List
 
+import emit_IR
+import scheme_types
 import sexp
 from find_tail_calls import TailCallData, TailCallFinder
 

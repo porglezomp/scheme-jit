@@ -1,7 +1,6 @@
 import copy
 from dataclasses import dataclass
-
-from typing import Any, Dict, Mapping, Optional, Type, cast
+from typing import Any, Dict, Mapping, Optional, Tuple, Type, cast
 
 import sexp
 from visitor import Visitor
@@ -64,6 +63,8 @@ class SchemeQuotedType(SchemeObjectType):
 
 
 TypeTuple = Tuple[SchemeObjectType, ...]
+
+
 @dataclass
 class SExpWrapper:
     expr: sexp.SExp
