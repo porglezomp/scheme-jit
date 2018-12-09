@@ -19,9 +19,10 @@ class SExp:
 
 class Value(SExp):
     """An s-expression that's a valid run-time object."""
-    @abstractmethod
     def type_name(self) -> SSym:
-        ...
+        result = self.scheme_type().symbol()
+        assert result
+        return result
 
     @abstractmethod
     def address(self) -> int:
@@ -43,9 +44,6 @@ class SNum(Value):
     def __hash__(self) -> int:
         return hash(self.value)
 
-    def type_name(self) -> SSym:
-        return SSym('number')
-
     def address(self) -> int:
         return self.value
 
@@ -60,9 +58,6 @@ class SBool(Value):
 
     def __str__(self) -> str:
         return str(self.value)
-
-    def type_name(self) -> SSym:
-        return SSym('bool')
 
     def address(self) -> int:
         return id(self.value)
@@ -81,9 +76,6 @@ class SSym(Value):
 
     def __hash__(self) -> int:
         return hash(self.name)
-
-    def type_name(self) -> SSym:
-        return SSym('symbol')
 
     def address(self) -> int:
         return id(self.name)
@@ -110,9 +102,6 @@ class SVect(Value):
 
     def __str__(self) -> str:
         return f"[{' '.join(str(i) for i in self.items)}]"
-
-    def type_name(self) -> SSym:
-        return SSym('vector')
 
     def address(self) -> int:
         return id(self.items)
@@ -248,9 +237,6 @@ class SFunction(Value):
 
     specializations: Dict[TypeTuple, bytecode.Function] = \
         field(default_factory=dict)
-
-    def type_name(self) -> SSym:
-        return SSym('function')
 
     def address(self) -> int:
         return id(self.code)

@@ -1,14 +1,12 @@
 import copy
 from dataclasses import dataclass, field
-from typing import DefaultDict, List, Optional, Tuple
+from typing import DefaultDict, Dict, List, Optional, Tuple
 
 import bytecode
-from bytecode import BasicBlock, Function, Var
+from bytecode import BasicBlock, Function, TypeMap, ValueMap, Var
 from scheme_types import SchemeObjectType
 from sexp import Value
 
-TypeMap = DefaultDict[Var, SchemeObjectType]
-ValueMap = DefaultDict[Var, Optional[Value]]
 Id = int
 Edge = Tuple[BasicBlock, int, BasicBlock]
 
@@ -38,6 +36,16 @@ class FunctionOptimizer:
             for i, inst in enumerate(block.instructions):
                 for succ in inst.successors():
                     self.succs[id(block)].append((block, i, succ))
+
+    def block_transfer(
+        self, block: BasicBlock, types: TypeMap, values: ValueMap,
+    ) -> Dict[int, Tuple[TypeMap, ValueMap]]:
+        jumps = {}
+        for i, inst in enumerate(block.instructions):
+            inst.run_abstract(types, values)
+            if inst.successors():
+                jumps[i] = (copy.deepcopy(types), copy.deepcopy(values))
+        return jumps
 
     def mark_vars(self, func: Function) -> Function:
         func = copy.deepcopy(func)

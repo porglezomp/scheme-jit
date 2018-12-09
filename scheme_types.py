@@ -2,11 +2,13 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, Type
 
 import sexp
+from sexp import SSym
 
 
 @dataclass(frozen=True)
 class SchemeObjectType:
-    pass
+    def symbol(self) -> Optional[sexp.SSym]:
+        return None
 
 
 SchemeObject = SchemeObjectType()
@@ -22,7 +24,8 @@ SchemeBottom = SchemeBottomType()
 
 @dataclass(frozen=True)
 class SchemeNumType(SchemeObjectType):
-    pass
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('number')
 
 
 SchemeNum = SchemeNumType()
@@ -30,7 +33,8 @@ SchemeNum = SchemeNumType()
 
 @dataclass(frozen=True)
 class SchemeBoolType(SchemeObjectType):
-    pass
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('bool')
 
 
 SchemeBool = SchemeBoolType()
@@ -38,7 +42,8 @@ SchemeBool = SchemeBoolType()
 
 @dataclass(frozen=True)
 class SchemeSymType(SchemeObjectType):
-    pass
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('symbol')
 
 
 SchemeSym = SchemeSymType()
@@ -48,10 +53,16 @@ SchemeSym = SchemeSymType()
 class SchemeVectType(SchemeObjectType):
     length: Optional[int]
 
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('vector')
+
 
 @dataclass(frozen=True)
 class SchemeFunctionType(SchemeObjectType):
     arity: Optional[int]
+
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('function')
 
 
 @dataclass(frozen=True)
