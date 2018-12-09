@@ -15,7 +15,7 @@ class OptTestCase(unittest.TestCase):
         bb0.add_inst(bytecode.JmpInst(bb1))
         bb1.add_inst(bytecode.ReturnInst(Var('v1')))
         func = bytecode.Function([], bb0)
-        self.assertEqual(str(func), '''function (? ) entry=bb0
+        self.assertEqual(str(func), '''function (?) entry=bb0
 bb0:
   v0 = 42
   v1 = Binop.ADD v0 69
@@ -25,7 +25,7 @@ bb1:
   return v1''')
 
         bb0.split_after(0)
-        self.assertEqual(str(func), '''function (? ) entry=bb0
+        self.assertEqual(str(func), '''function (?) entry=bb0
 bb0:
   v0 = 42
   jmp bb0.split

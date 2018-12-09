@@ -563,12 +563,13 @@ class Function:
                     blocks.append(b)
 
     def __str__(self) -> str:
-        return (f"function (? {' '.join(x.name for x in self.params)})"
+        return (f"function (?{''.join(' ' + x.name for x in self.params)})"
                 f" entry={self.start.name}\n"
                 + '\n\n'.join(str(b) for b in self.blocks()))
 
     def format_stats(self, name: SSym, stats: Stats) -> str:
-        return (f"function ({name} {' '.join(x.name for x in self.params)})"
+        params = ''.join(' ' + x.name for x in self.params)
+        return (f"function ({name}{params})"
                 f" entry={self.start.name}\n"
                 + '\n\n'.join(b.format_stats(stats) for b in self.blocks()))
 
