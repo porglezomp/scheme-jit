@@ -261,9 +261,9 @@ class BinopInst(Inst):
         rhs = env[self.rhs]
         if self.op == Binop.SYM_EQ:
             assert isinstance(lhs, SSym) and isinstance(rhs, SSym)
-            env[self.dest] = sexp.SBool(lhs == rhs)
+            env[self.dest] = SBool(lhs == rhs)
         elif self.op == Binop.PTR_EQ:
-            env[self.dest] = sexp.SBool(lhs.address() == rhs.address())
+            env[self.dest] = SBool(lhs.address() == rhs.address())
         else:
             assert isinstance(lhs, SNum) and isinstance(rhs, SNum)
             if self.op == Binop.ADD:
@@ -279,16 +279,68 @@ class BinopInst(Inst):
                 assert rhs.value != 0
                 env[self.dest] = SNum(lhs.value % rhs.value)
             elif self.op == Binop.NUM_EQ:
-                env[self.dest] = sexp.SBool(lhs == rhs)
+                env[self.dest] = SBool(lhs == rhs)
             elif self.op == Binop.NUM_LT:
-                env[self.dest] = sexp.SBool(lhs < rhs)
+                env[self.dest] = SBool(lhs < rhs)
             else:
                 raise ValueError(f"Unexpected op {self.op}")
 
     def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
-        # @TODO: Handle!
-        types[self.dest] = scheme_types.SchemeObject
+        # Type-based transfer function
+        if self.op in (Binop.ADD, Binop.SUB, Binop.MUL, Binop.DIV, Binop.MOD):
+            types[self.dest] = scheme_types.SchemeNum
+        elif self.op in (Binop.SYM_EQ, Binop.PTR_EQ,
+                         Binop.NUM_EQ, Binop.NUM_LT):
+            types[self.dest] = scheme_types.SchemeBool
+        else:
+            raise ValueError(f"Unexpected op {self.op}")
+
         values[self.dest] = None
+        lhs, rhs = values[self.lhs], values[self.rhs]
+        if lhs is None or rhs is None:
+            # Cannot do any constant folding
+            return
+
+        if self.op == Binop.SYM_EQ:
+            if not (isinstance(lhs, SSym) and isinstance(rhs, SSym)):
+                print("Unexpected args to SYM_EQ {self} ({lhs}, {rhs})")
+                return
+
+            types[self.dest] = scheme_types.SchemeBool
+            values[self.dest] = SBool(lhs == rhs)
+        elif self.op == Binop.PTR_EQ:
+            types[self.dest] = scheme_types.SchemeBool
+            values[self.dest] = SBool(lhs.address() == rhs.address())
+        else:
+            if not (isinstance(lhs, SNum) and isinstance(rhs, SNum)):
+                print("Unexpected args to arith {self} ({lhs}, {rhs})")
+                return
+
+            res: Value
+            if self.op == Binop.ADD:
+                res = SNum(lhs.value + rhs.value)
+            elif self.op == Binop.SUB:
+                res = SNum(lhs.value - rhs.value)
+            elif self.op == Binop.MUL:
+                res = SNum(lhs.value * rhs.value)
+            elif self.op == Binop.DIV:
+                if rhs.value == 0:
+                    print("Unexpected div by zero {self} ({rhs})")
+                    return
+                res = SNum(lhs.value // rhs.value)
+            elif self.op == Binop.MOD:
+                if rhs.value == 0:
+                    print("Unexpected mod by zero {self} ({rhs})")
+                    return
+                res = SNum(lhs.value % rhs.value)
+            elif self.op == Binop.NUM_EQ:
+                res = SBool(lhs == rhs)
+            elif self.op == Binop.NUM_LT:
+                res = SBool(lhs < rhs)
+            else:
+                raise ValueError(f"Unexpected op {self.op}")
+            values[self.dest] = res
+            types[self.dest] = res.scheme_type()
 
     def __str__(self) -> str:
         return f"{self.dest} = {self.op} {self.lhs} {self.rhs}"
