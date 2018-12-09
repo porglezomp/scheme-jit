@@ -267,7 +267,8 @@ class ExpressionEmitter(Visitor):
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
         if call.func == sexp.SSym('assert') and len(call.args) == 1:
-            if self._is_true_type_assertion(call.args[0]):
+            if (self._is_true_type_assertion(call.args[0])
+                    or self._is_true_bounds_check(call.args[0])):
                 self.result = bytecode.NumLit(sexp.SNum(0))
                 return
 
@@ -396,6 +397,48 @@ class ExpressionEmitter(Visitor):
         sexp.SSym('pair?'): scheme_types.SchemeVectType(2),
         sexp.SSym('nil?'): scheme_types.SchemeVectType(0),
     }
+
+    def _is_true_bounds_check(self, assert_arg: sexp.SExp) -> bool:
+        if self._expr_types is None:
+            return False
+
+        if not isinstance(assert_arg, sexp.SCall):
+            return False
+
+        if assert_arg.func != sexp.SSym('number<'):
+            return False
+
+        if len(assert_arg.args) != 2:
+            return False
+
+        first_value = self._get_bounds_check_arg_value(assert_arg.args[0])
+        second_value = self._get_bounds_check_arg_value(assert_arg.args[1])
+
+        return (first_value is not None and second_value is not None
+                and first_value < second_value)
+
+    def _get_bounds_check_arg_value(self, arg: sexp.SExp) -> Optional[int]:
+        assert self._expr_types is not None
+        if not self._expr_types.expr_type_known(arg):
+            return None
+
+        if (isinstance(arg, sexp.SCall)
+                and arg.func == sexp.SSym('vector-length')
+                and len(arg.args) == 1):
+            vec_arg = arg.args[0]
+            if not self._expr_types.expr_type_known(vec_arg):
+                return None
+
+            vec_type = self._expr_types.get_expr_type(vec_arg)
+            return (vec_type.length if isinstance(vec_type,
+                                                  scheme_types.SchemeVectType)
+                    else None)
+
+        type_ = self._expr_types.get_expr_type(arg)
+        if isinstance(type_, scheme_types.SchemeNumType):
+            return type_.value
+
+        return None
 
     def _add_is_function_check(
             self, function_expr: bytecode.Parameter,

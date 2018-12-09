@@ -872,6 +872,131 @@ bb0:
     # -------------------------------------------------------------------------
 
     def test_specialize_in_bounds_vector_access(self) -> None:
+        code = '''
+            (define (my-vector-index v n)
+                (assert (vector? v))
+                (assert (number? n))
+                (assert (number< -1 n))
+                (assert (number< n (vector-length v)))
+                (inst/load v n)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('v'): scheme_types.SchemeVectType(2),
+                sexp.SSym('n'): scheme_types.SchemeNumType(1)
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+        self.fail()
+
+    def test_out_of_bounds_vector_access_checks_not_removed(self) -> None:
+        code = '''
+            (define (my-vector-index v n)
+                (assert (vector? v))
+                (assert (number? n))
+                (assert (number< -1 n))
+                (assert (number< n (vector-length v)))
+                (inst/load v n)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+        self.fail()
+
+    def test_non_constant_index_checks_not_removed(self) -> None:
+        code = '''
+            (define (my-vector-index v n)
+                (assert (vector? v))
+                (assert (number? n))
+                (assert (number< -1 n))
+                (assert (number< n (vector-length v)))
+                (inst/load v n)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
+                sexp.SSym('n'): scheme_types.SchemeNum
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+        self.fail()
+
+    def test_vector_access_unknown_vector_size(self) -> None:
+        code = '''
+            (define (my-vector-index v n)
+                (assert (vector? v))
+                (assert (number? n))
+                (assert (number< -1 n))
+                (assert (number< n (vector-length v)))
+                (inst/load v n)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(None),
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+        self.fail()
+
+    def test_vector_access_non_vector(self) -> None:
+        code = '''
+            (define (my-vector-index v n)
+                (assert (vector? v))
+                (assert (number? n))
+                (assert (number< -1 n))
+                (assert (number< n (vector-length v)))
+                (inst/load v n)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeObject,
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+        self.fail()
+
+    def test_vector_access_non_number_index(self) -> None:
+        code = '''
+            (define (my-vector-index v n)
+                (assert (vector? v))
+                (assert (number? n))
+                (assert (number< -1 n))
+                (assert (number< n (vector-length v)))
+                (inst/load v n)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
         self.fail()
 
     # -------------------------------------------------------------------------

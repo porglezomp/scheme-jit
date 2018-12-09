@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import copy
-from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Tuple, Type, cast
+from dataclasses import dataclass, field
+from typing import Dict, Mapping, Optional, Tuple, Type, cast
 
 import sexp
 from visitor import Visitor
@@ -8,8 +10,17 @@ from visitor import Visitor
 
 @dataclass(frozen=True)
 class SchemeObjectType:
-    def __lt__(self, other: Any) -> bool:
+    def __lt__(self, other: object) -> bool:
         return issubclass(type(self), type(other))
+
+    def join_with(self, other: object) -> SchemeObjectType:
+        assert isinstance(other, SchemeObjectType)
+        if self < other:
+            return other
+        elif other < self:
+            return self
+        else:
+            return SchemeObject
 
 
 SchemeObject = SchemeObjectType()
@@ -25,7 +36,13 @@ SchemeBottom = SchemeBottomType()
 
 @dataclass(frozen=True)
 class SchemeNumType(SchemeObjectType):
-    pass
+    value: Optional[int] = None
+
+    def join_with(self, other: object) -> SchemeObjectType:
+        if isinstance(other, SchemeNumType):
+            return self if self.value == other.value else SchemeNum
+
+        return super().join_with(other)
 
 
 SchemeNum = SchemeNumType()
@@ -51,11 +68,18 @@ SchemeSym = SchemeSymType()
 class SchemeVectType(SchemeObjectType):
     length: Optional[int]
 
-    def __lt__(self, other: Any) -> bool:
+    def __lt__(self, other: object) -> bool:
         if isinstance(other, SchemeVectType):
             return other.length is None or self.length == other.length
 
         return super().__lt__(other)
+
+    def join_with(self, other: object) -> SchemeObjectType:
+        if isinstance(other, SchemeVectType):
+            length = self.length if self.length == other.length else None
+            return SchemeVectType(length)
+
+        return super().join_with(other)
 
 
 @dataclass(frozen=True)
@@ -63,7 +87,7 @@ class SchemeFunctionType(SchemeObjectType):
     arity: Optional[int]
     return_type: SchemeObjectType = SchemeObject
 
-    def __lt__(self, other: Any) -> bool:
+    def __lt__(self, other: object) -> bool:
         if isinstance(other, SchemeFunctionType):
             return (
                 (other.arity is None or self.arity == other.arity)
@@ -71,6 +95,14 @@ class SchemeFunctionType(SchemeObjectType):
             )
 
         return super().__lt__(other)
+
+    def join_with(self, other: object) -> SchemeObjectType:
+        if isinstance(other, SchemeFunctionType):
+            arity = self.arity if self.arity == other.arity else None
+            return_type = self.return_type.join_with(other.return_type)
+            return SchemeFunctionType(arity, return_type)
+
+        return super().join_with(other)
 
 
 @dataclass(frozen=True)
@@ -85,7 +117,7 @@ TypeTuple = Tuple[SchemeObjectType, ...]
 class SExpWrapper:
     expr: sexp.SExp
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         return hash(self) == hash(other)
 
     def __hash__(self) -> int:
@@ -134,7 +166,7 @@ class FunctionTypeAnalyzer(Visitor):
             self._set_expr_type(func, self._function_type)
 
     def visit_SNum(self, num: sexp.SNum) -> None:
-        self._set_expr_type(num, SchemeNumType())
+        self._set_expr_type(num, SchemeNumType(num.value))
 
     def visit_SBool(self, sbool: sexp.SBool) -> None:
         self._set_expr_type(sbool, SchemeBoolType())
@@ -167,7 +199,12 @@ class FunctionTypeAnalyzer(Visitor):
 
     def visit_SCall(self, call: sexp.SCall) -> None:
         super().visit_SCall(call)
-        if self.expr_type_known(call.func):
+        if call.func == sexp.SSym('vector-make') and len(call.args) == 2:
+            size_type = self.get_expr_type(call.args[0])
+            vector_len = (cast(SchemeNumType, size_type).value
+                          if size_type < SchemeNum else None)
+            self._set_expr_type(call, SchemeVectType(vector_len))
+        elif self.expr_type_known(call.func):
             func_type = self.get_expr_type(call.func)
             if isinstance(func_type, SchemeFunctionType):
                 self._set_expr_type(call, func_type.return_type)
@@ -181,10 +218,7 @@ class FunctionTypeAnalyzer(Visitor):
 
         then_type = self.get_expr_type(cond.then_expr)
         else_type = self.get_expr_type(cond.else_expr)
-        if then_type == else_type:
-            self._set_expr_type(cond, then_type)
-        else:
-            self._set_expr_type(cond, SchemeObjectType())
+        self._set_expr_type(cond, then_type.join_with(else_type))
 
 
 _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {

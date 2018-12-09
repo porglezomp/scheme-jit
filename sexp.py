@@ -50,7 +50,7 @@ class SNum(Value):
         return self.value
 
     def scheme_type(self) -> scheme_types.SchemeNumType:
-        return scheme_types.SchemeNum
+        return scheme_types.SchemeNumType(value)
 
 
 @dataclass(frozen=True)
