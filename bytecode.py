@@ -22,11 +22,15 @@ class TypeMap:
     def __getitem__(self, key: Parameter) -> SchemeObjectType:
         try:
             return key.lookup_self_type(self.types)
-        except IndexError:
+        except KeyError:
             return scheme_types.SchemeObject
 
     def __setitem__(self, key: Var, value: SchemeObjectType) -> None:
         self.types[key] = value
+
+    def __repr__(self) -> str:
+        parts = ', '.join(f"{k.name}: {v}" for k, v in self.types.items())
+        return f"TypeMap({{{parts}}})"
 
 
 class ValueMap:
@@ -38,14 +42,18 @@ class ValueMap:
     def __getitem__(self, key: Parameter) -> Optional[Value]:
         try:
             return key.lookup_self(self.values)
-        except IndexError:
+        except KeyError:
             return None
 
     def __setitem__(self, key: Var, value: Optional[Value]) -> None:
         if value is None:
-            self.values.pop(key)
+            self.values.pop(key, None)
         else:
             self.values[key] = value
+
+    def __repr__(self) -> str:
+        parts = ', '.join(f"{k.name}: {v}" for k, v in self.values.items())
+        return f"ValueMap({{{parts}}})"
 
 
 class Parameter(ABC):
