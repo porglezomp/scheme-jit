@@ -28,7 +28,7 @@ class Inst(ABC):
     def run(self, env: EvalEnv) -> Optional[BB]:
         ...
 
-    def successors(self) -> Iterable[BB]:
+    def successors(self) -> Iterable[BasicBlock]:
         return []
 
     @abstractmethod
@@ -39,7 +39,7 @@ class Inst(ABC):
 class BB(ABC):
     name: str
 
-    def successors(self) -> Iterable[BB]:
+    def successors(self) -> Iterable[BasicBlock]:
         return []
 
     def format_stats(self, stats: Stats) -> str:
@@ -438,7 +438,7 @@ class CallInst(Inst):
 
 @dataclass
 class JmpInst(Inst):
-    target: BB
+    target: BasicBlock
 
     def __repr__(self) -> str:
         return f"JmpInst(target={self.target.name})"
@@ -446,7 +446,7 @@ class JmpInst(Inst):
     def run(self, env: EvalEnv) -> BB:
         return self.target
 
-    def successors(self) -> Iterable[BB]:
+    def successors(self) -> Iterable[BasicBlock]:
         return [self.target]
 
     def __str__(self) -> str:
@@ -459,7 +459,7 @@ class JmpInst(Inst):
 @dataclass
 class BrInst(Inst):
     cond: Parameter
-    target: BB
+    target: BasicBlock
 
     def __repr__(self) -> str:
         return (f"BrInst(cond={self.cond}, target={self.target.name})")
@@ -471,7 +471,7 @@ class BrInst(Inst):
             return self.target
         return None
 
-    def successors(self) -> Iterable[BB]:
+    def successors(self) -> Iterable[BasicBlock]:
         return [self.target]
 
     def __str__(self) -> str:
@@ -484,7 +484,7 @@ class BrInst(Inst):
 @dataclass
 class BrnInst(Inst):
     cond: Parameter
-    target: BB
+    target: BasicBlock
 
     def __repr__(self) -> str:
         return (f"BrnInst(cond={self.cond}, target={self.target.name})")
@@ -496,7 +496,7 @@ class BrnInst(Inst):
             return self.target
         return None
 
-    def successors(self) -> Iterable[BB]:
+    def successors(self) -> Iterable[BasicBlock]:
         return [self.target]
 
     def __str__(self) -> str:
@@ -598,7 +598,7 @@ class BasicBlock(BB):
         assert next_bb
         return next_bb
 
-    def successors(self) -> Iterator[BB]:
+    def successors(self) -> Iterator[BasicBlock]:
         for inst in self.instructions:
             yield from inst.successors()
 
@@ -632,14 +632,14 @@ class Function:
             else:
                 raise NotImplementedError(f"Unexpected BB type: {type(block)}")
 
-    def blocks(self) -> Iterator[BB]:
+    def blocks(self) -> Iterator[BasicBlock]:
         """
         Iterate over the basic blocks in some order.
 
         Ideally this would be the preorder traversal of the dom-tree.
         """
         visited: Set[int] = set()
-        blocks: List[BB] = [self.start]
+        blocks: List[BasicBlock] = [self.start]
         while blocks:
             block = blocks.pop()
             yield block

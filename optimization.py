@@ -1,20 +1,49 @@
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import DefaultDict, List, Optional, Tuple
 
 import bytecode
-from bytecode import BasicBlock, Function
+from bytecode import BasicBlock, Function, Var
+from scheme_types import SchemeObjectType
+from sexp import Value
+
+TypeMap = DefaultDict[Var, SchemeObjectType]
+ValueMap = DefaultDict[Var, Optional[Value]]
+Id = int
+Edge = Tuple[BasicBlock, int, BasicBlock]
 
 
 @dataclass
 class FunctionOptimizer:
+    func: Function
     prefix_counter: int = 0
+    succs: Optional[DefaultDict[Id, List[Edge]]] = None
+    preds: Optional[DefaultDict[Id, List[Edge]]] = None
+
+    def compute_preds(self) -> None:
+        if not self.succs:
+            self.compute_succs()
+        assert self.succs
+        self.preds = DefaultDict(list)
+        for block in self.succs.keys():
+            self.preds[block] = []
+        for block, succs in self.succs.items():
+            for (src, i, dst) in succs:
+                self.preds[id(dst)].append((src, i, dst))
+
+    def compute_succs(self) -> None:
+        self.succs = DefaultDict(list)
+        for block in self.func.blocks():
+            self.succs[id(block)] = []
+            for i, inst in enumerate(block.instructions):
+                for succ in inst.successors():
+                    self.succs[id(block)].append((block, i, succ))
 
     def mark_vars(self, func: Function) -> Function:
         func = copy.deepcopy(func)
         prefix = f"inl{self.prefix_counter}"
         for block in func.blocks():
             block.name = f"{prefix}@{block.name}"
-            assert isinstance(block, BasicBlock)
             for inst in block.instructions:
                 inst.freshen(prefix)
         return func

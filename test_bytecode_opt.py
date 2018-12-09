@@ -1,4 +1,5 @@
 import unittest
+from typing import DefaultDict
 
 import bytecode
 from bytecode import Binop, NumLit, Var
@@ -44,8 +45,9 @@ bb1:
   return v1''')
 
     def test_mark_vars(self) -> None:
-        opt = FunctionOptimizer()
-        func = opt.mark_vars(make_func())
+        func = make_func()
+        opt = FunctionOptimizer(func)
+        func = opt.mark_vars(func)
         self.assertEqual(str(func), '''function (?) entry=inl0@bb0
 inl0@bb0:
   inl0@v0 = 42
@@ -54,3 +56,23 @@ inl0@bb0:
 
 inl0@bb1:
   return inl0@v1''')
+
+    def test_mark_functions(self) -> None:
+        func = make_func()
+        func.start.split_after(0)
+        bb0 = func.start
+        bb0_split = next(bb0.successors())
+        bb1 = next(bb0_split.successors())
+
+        opt = FunctionOptimizer(func)
+        opt.compute_preds()
+        self.assertEqual(opt.succs, DefaultDict(list, {
+            id(bb0): [(bb0, 1, bb0_split)],
+            id(bb0_split): [(bb0_split, 1, bb1)],
+            id(bb1): [],
+        }))
+        self.assertEqual(opt.preds, DefaultDict(list, {
+            id(bb0): [],
+            id(bb0_split): [(bb0, 1, bb0_split)],
+            id(bb1): [(bb0_split, 1, bb1)],
+        }))
