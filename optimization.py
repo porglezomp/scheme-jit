@@ -39,13 +39,13 @@ class FunctionOptimizer:
 
     def block_transfer(
         self, block: BasicBlock, types: TypeMap, values: ValueMap,
-    ) -> Dict[int, Tuple[TypeMap, ValueMap]]:
-        jumps = {}
+    ) -> List[Tuple[TypeMap, ValueMap]]:
+        abstract = []
         for i, inst in enumerate(block.instructions):
+            abstract.append((copy.deepcopy(types), copy.deepcopy(values)))
             inst.run_abstract(types, values)
-            if inst.successors():
-                jumps[i] = (copy.deepcopy(types), copy.deepcopy(values))
-        return jumps
+        abstract.append((copy.deepcopy(types), copy.deepcopy(values)))
+        return abstract
 
     def mark_vars(self, func: Function) -> Function:
         func = copy.deepcopy(func)

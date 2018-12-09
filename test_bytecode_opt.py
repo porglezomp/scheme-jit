@@ -2,9 +2,12 @@ import unittest
 from typing import DefaultDict
 
 import bytecode
-from bytecode import Binop, NumLit, Var
+import runner
+import sexp
+from bytecode import Binop, NumLit, TypeMap, ValueMap, Var
 from optimization import FunctionOptimizer
-from sexp import SNum
+from scheme_types import SchemeNum
+from sexp import SNum, SSym
 
 
 def make_func() -> bytecode.Function:
@@ -76,3 +79,17 @@ inl0@bb1:
             id(bb0_split): [(bb0, 1, bb0_split)],
             id(bb1): [(bb0_split, 1, bb1)],
         }))
+
+    def test_block_transfer(self) -> None:
+        func = make_func()
+        opt = FunctionOptimizer(func)
+        data = opt.block_transfer(func.start, TypeMap(), ValueMap())
+        self.assertEqual(data, [
+            (TypeMap(), ValueMap()),
+            (TypeMap({Var('v0'): SchemeNum}),
+             ValueMap({Var('v0'): SNum(42)})),
+            (TypeMap({Var('v0'): SchemeNum, Var('v1'): SchemeNum}),
+             ValueMap({Var('v0'): SNum(42), Var('v1'): SNum(111)})),
+            (TypeMap({Var('v0'): SchemeNum, Var('v1'): SchemeNum}),
+             ValueMap({Var('v0'): SNum(42), Var('v1'): SNum(111)})),
+        ])

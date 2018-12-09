@@ -13,11 +13,9 @@ from scheme_types import SchemeObjectType, TypeTuple
 from sexp import SBool, SExp, SNum, SSym, SVect, Value
 
 
+@dataclass
 class TypeMap:
-    types: Dict[Var, SchemeObjectType]
-
-    def __init__(self) -> None:
-        self.types = {}
+    types: Dict[Var, SchemeObjectType] = field(default_factory=dict)
 
     def __getitem__(self, key: Parameter) -> SchemeObjectType:
         try:
@@ -33,11 +31,9 @@ class TypeMap:
         return f"TypeMap({{{parts}}})"
 
 
+@dataclass
 class ValueMap:
-    values: Dict[Var, Value]
-
-    def __init__(self) -> None:
-        self.values = {}
+    values: Dict[Var, Value] = field(default_factory=dict)
 
     def __getitem__(self, key: Parameter) -> Optional[Value]:
         try:
