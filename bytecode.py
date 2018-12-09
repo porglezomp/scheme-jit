@@ -6,8 +6,10 @@ from enum import Enum, auto
 from typing import (Any, Counter, Dict, Generator, Generic, Iterable, Iterator,
                     List, Optional, Set, TypeVar)
 
+import scheme_types
 import sexp
 from errors import Trap
+from scheme_types import TypeTuple
 from sexp import SBool, SExp, SNum, SSym, SVect, Value
 
 
@@ -87,6 +89,7 @@ class Stats:
     inst_count: Counter[int] = field(default_factory=Counter)
     taken_count: Counter[int] = field(default_factory=Counter)
     function_count: Counter[int] = field(default_factory=Counter)
+    specialization_dispatch: Counter[int] = field(default_factory=Counter)
 
 
 class EvalEnv:
@@ -329,6 +332,7 @@ class CallInst(Inst):
     dest: Var
     func: Parameter
     args: List[Parameter]
+    specialization: Optional[TypeTuple] = None
 
     def run(self, env: EvalEnv) -> None:
         for _ in self.run_call(env):
@@ -345,11 +349,26 @@ class CallInst(Inst):
         func_env._local_env = {
             name: env[arg] for name, arg in zip(func_code.params, self.args)
         }
-        env[self.dest] = yield from func_code.run(func_env)
+        if self.specialization:
+            assert self.specialization in func.specializations
+            specialized = func.specializations[self.specialization]
+            env[self.dest] = yield from specialized.run(func_env)
+        else:
+            env.stats.specialization_dispatch[id(self)] += 1
+            type_tuple = tuple(env[arg].scheme_type() for arg in self.args)
+            if type_tuple in func.specializations:
+                specialized = func.specializations[type_tuple]
+                env[self.dest] = yield from specialized.run(func_env)
+            else:
+                env[self.dest] = yield from func_code.run(func_env)
 
     def __str__(self) -> str:
         args = ', '.join(str(arg) for arg in self.args)
-        return f"{self.dest} = call {self.func} ({args})"
+        text = f"{self.dest} = call {self.func} ({args})"
+        if self.specialization:
+            types = ', '.join(str(ty) for ty in self.specialization)
+            text += f" ({types})"
+        return text
 
 
 @dataclass

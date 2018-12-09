@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from dataclasses import dataclass
-from typing import (TYPE_CHECKING, Iterator, List, Optional, Sequence, Tuple,
-                    Union, cast)
+from dataclasses import dataclass, field
+from typing import (TYPE_CHECKING, Dict, Iterator, List, Optional, Sequence,
+                    Tuple, Union, cast)
+
+import scheme_types
 
 if TYPE_CHECKING:
     import bytecode
+    from scheme_types import TypeTuple
 
 
 class SExp:
@@ -22,6 +25,10 @@ class Value(SExp):
 
     @abstractmethod
     def address(self) -> int:
+        ...
+
+    @abstractmethod
+    def scheme_type(self) -> scheme_types.SchemeObjectType:
         ...
 
 
@@ -42,6 +49,9 @@ class SNum(Value):
     def address(self) -> int:
         return self.value
 
+    def scheme_type(self) -> scheme_types.SchemeNumType:
+        return scheme_types.SchemeNum
+
 
 @dataclass(frozen=True)
 class SBool(Value):
@@ -56,6 +66,9 @@ class SBool(Value):
 
     def address(self) -> int:
         return id(self.value)
+
+    def scheme_type(self) -> scheme_types.SchemeBoolType:
+        return scheme_types.SchemeBool
 
 
 @dataclass(frozen=True)
@@ -74,6 +87,9 @@ class SSym(Value):
 
     def address(self) -> int:
         return id(self.name)
+
+    def scheme_type(self) -> scheme_types.SchemeSymType:
+        return scheme_types.SchemeSym
 
 
 @dataclass(frozen=True)
@@ -100,6 +116,9 @@ class SVect(Value):
 
     def address(self) -> int:
         return id(self.items)
+
+    def scheme_type(self) -> scheme_types.SchemeVectType:
+        return scheme_types.SchemeVectType(len(self.items))
 
 
 @dataclass(frozen=True)
@@ -227,11 +246,17 @@ class SFunction(Value):
     code: Optional[bytecode.Function] = None
     is_lambda: bool = False
 
+    specializations: Dict[TypeTuple, bytecode.Function] = \
+        field(default_factory=dict)
+
     def type_name(self) -> SSym:
         return SSym('function')
 
     def address(self) -> int:
         return id(self.code)
+
+    def scheme_type(self) -> scheme_types.SchemeFunctionType:
+        return scheme_types.SchemeFunctionType(len(self.params))
 
 
 @dataclass(frozen=True)
