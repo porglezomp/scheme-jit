@@ -516,6 +516,12 @@ class BasicBlock(BB):
         for inst in self.instructions:
             yield from inst.successors()
 
+    def split_after(self, idx: int) -> BasicBlock:
+        new_block = BasicBlock(self.name + ".split", self.instructions[idx+1:])
+        self.instructions = self.instructions[:idx+1]
+        self.add_inst(JmpInst(new_block))
+        return new_block
+
 
 @dataclass
 class ReturnBlock(BB):
