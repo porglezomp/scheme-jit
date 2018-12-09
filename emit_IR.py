@@ -271,29 +271,47 @@ class ExpressionEmitter(Visitor):
                 self.result = bytecode.NumLit(sexp.SNum(0))
                 return
 
-        is_tail_call = (self._tail_calls is not None
-                        and TailCallData(call) in self._tail_calls)
+        is_tail_call = False
+        tail_call_data = None
+        if self._tail_calls is not None:
+            is_tail_call = TailCallData(call) in self._tail_calls
+            if is_tail_call:
+                tail_call_data = self._tail_calls[
+                    self._tail_calls.index(TailCallData(call))]
 
-        is_known_function = (
-            self._expr_types is not None
-            and self._expr_types.expr_type_known(call.func)
-            and isinstance(self._expr_types.get_expr_type(call.func),
-                           scheme_types.SchemeFunctionType)
-        )
+        is_known_function = False
         arity_known_correct = False
-        if is_known_function:
-            self._expr_types = cast(scheme_types.FunctionTypeAnalyzer,
-                                    self._expr_types)
-            func_type = cast(scheme_types.SchemeFunctionType,
-                             self._expr_types.get_expr_type(call.func))
-            arity_known_correct = func_type.arity == len(call.args)
-        elif is_tail_call:
-            tail_calls = cast(List[TailCallData], self._tail_calls)
-            tail_data = tail_calls[tail_calls.index(TailCallData(call))]
-            arity_known_correct = (
-                len(tail_data.get_func().params) == len(call.args))
+        call_args_incompatible = False
+        if self._expr_types is not None:
+            is_known_function = (
+                self._expr_types.expr_type_known(call.func)
+                and isinstance(self._expr_types.get_expr_type(call.func),
+                               scheme_types.SchemeFunctionType)
+            )
+            if is_known_function:
+                func_type = cast(scheme_types.SchemeFunctionType,
+                                 self._expr_types.get_expr_type(call.func))
+                arity_known_correct = func_type.arity == len(call.args)
+            elif is_tail_call:
+                assert tail_call_data is not None
+                arity_known_correct = (
+                    len(tail_call_data.get_func().params) == len(call.args))
 
-        if not is_tail_call or not arity_known_correct:
+            if arity_known_correct and is_tail_call:
+                assert tail_call_data is not None
+                for arg_expr, param in zip(call.args,
+                                           tail_call_data.func_params):
+                    arg_type = self._expr_types.get_expr_type(arg_expr)
+                    param_type = self._expr_types.get_expr_type(param)
+                    if not (arg_type < param_type):
+                        call_args_incompatible = True
+
+        func_expr_emitter = None
+        optimize_tail_call = (
+            is_tail_call
+            and arity_known_correct
+            and not call_args_incompatible)
+        if not optimize_tail_call:
             func_expr_emitter = ExpressionEmitter(
                 self.parent_block, self.bb_names, self.var_names,
                 self.local_env, self.global_env,
@@ -301,17 +319,16 @@ class ExpressionEmitter(Visitor):
                 tail_calls=self._tail_calls,
                 expr_types=self._expr_types)
             func_expr_emitter.visit(call.func)
-
-        if not is_tail_call and not is_known_function:
-            self._add_is_function_check(
-                func_expr_emitter.result, func_expr_emitter.end_block)
             self.end_block = func_expr_emitter.end_block
 
-        if not arity_known_correct:
-            self._add_arity_check(
-                func_expr_emitter.result, func_expr_emitter.end_block,
-                len(call.args))
-            self.end_block = func_expr_emitter.end_block
+            if not is_known_function:
+                self._add_is_function_check(
+                    func_expr_emitter.result, self.end_block)
+
+            if not arity_known_correct:
+                self._add_arity_check(
+                    func_expr_emitter.result, self.end_block,
+                    len(call.args))
 
         args: List[bytecode.Parameter] = []
         arg_emitter: Optional[ExpressionEmitter] = None
@@ -327,30 +344,27 @@ class ExpressionEmitter(Visitor):
             args.append(arg_emitter.result)
             self.end_block = arg_emitter.end_block
 
-        new_end_block = (arg_emitter.end_block if arg_emitter is not None
-                         else func_expr_emitter.end_block)
-
-        if is_tail_call and arity_known_correct:
-            assert self._tail_calls is not None
-            tail_call_data = self._tail_calls[
-                self._tail_calls.index(TailCallData(call))]
+        if optimize_tail_call:
+            assert tail_call_data is not None
             for arg, param in zip(args, tail_call_data.func_params):
                 local_var = self.local_env[param]
                 if arg != local_var:
-                    new_end_block.add_inst(bytecode.CopyInst(local_var, arg))
+                    self.end_block.add_inst(bytecode.CopyInst(local_var, arg))
 
             assert self._function_entrypoint is not None
-            new_end_block.add_inst(bytecode.JmpInst(self._function_entrypoint))
+            self.end_block.add_inst(
+                bytecode.JmpInst(self._function_entrypoint))
 
             # We need a placeholder result since we're jumping back
             # to the beginning of the function
             self.result = bytecode.NumLit(sexp.SNum(0))
         else:
+            assert func_expr_emitter is not None
             call_result_var = bytecode.Var(next(self.var_names))
             call_instr = bytecode.CallInst(
                 call_result_var, func_expr_emitter.result, args)
 
-            new_end_block.add_inst(call_instr)
+            self.end_block.add_inst(call_instr)
             self.result = call_result_var
 
     def _is_true_type_assertion(self, assert_arg: sexp.SExp) -> bool:

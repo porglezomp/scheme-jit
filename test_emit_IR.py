@@ -1111,6 +1111,54 @@ bb0:
 
     # -------------------------------------------------------------------------
 
+    def test_tail_call_in_specialized(self) -> None:
+        code = '''
+            (define (spam egg)
+                (assert (number? egg))
+                (spam (+ egg 1))
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('egg'): scheme_types.SchemeNum
+            },
+            optimize_tail_calls=True)
+
+        expected = '''
+function (? egg) entry=bb0
+bb0:
+  v0 = lookup '+
+  v1 = call v0 (egg, 1)
+  egg = v1
+  jmp bb0
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_tail_call_in_specialized_code_mismatching_arg_types(self) -> None:
+        code = '''
+            (define (spam egg)
+                (assert (number? egg))
+                (spam true)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('egg'): scheme_types.SchemeNum
+            },
+            optimize_tail_calls=True)
+
+        expected = '''
+function (? egg) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = call v0 ('True)
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
     def test_remove_is_function_assertion_arity_known(self) -> None:
         code = '''(define (spam func) (assert (function? func)))'''
         optimized = self.get_optimized_func_bytecode(

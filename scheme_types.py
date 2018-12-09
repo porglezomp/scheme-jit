@@ -123,6 +123,8 @@ class FunctionTypeAnalyzer(Visitor):
             self._set_expr_type(func, SchemeFunctionType(len(func.params)))
             # Lambda bodies will be analyzed separately when they're called
         else:
+            for param in func.params:
+                super().visit(param)
             super().visit(func.body)
 
             self._function_type = SchemeFunctionType(

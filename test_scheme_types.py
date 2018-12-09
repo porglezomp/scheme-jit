@@ -92,7 +92,8 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         func_type = scheme_types.SchemeFunctionType(
             1, scheme_types.SchemeObject)
         expected = [
-            scheme_types.SchemeObject,
+            scheme_types.SchemeObject,  # egg param symbol
+            scheme_types.SchemeObject,  # egg usage symbol
             func_type,
         ]
         self.assertEqual(expected, types)
@@ -128,6 +129,8 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
         types = list(analyzer.get_expr_types().values())
         expected = [
+            scheme_types.SchemeNum,  # egg param
+
             # + signature
             scheme_types.SchemeFunctionType(2, scheme_types.SchemeNum),
 
