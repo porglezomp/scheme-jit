@@ -455,3 +455,23 @@ class ConstExprTestCase(unittest.TestCase):
             sexp.SSym('function'),
         ]
         self.assertEqual(expected, values)
+
+    def test_not_bool(self) -> None:
+        prog = sexp.parse('(not true)')
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        values = list(analyzer.get_expr_values().values())
+        expected = [
+            sexp.SBool(True),
+            sexp.SBool(False),
+        ]
+        self.assertEqual(expected, values)
+
+    def test_not_object(self) -> None:
+        prog = sexp.parse('(not spam)')
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        values = list(analyzer.get_expr_values().values())
+        self.assertEqual([], values)

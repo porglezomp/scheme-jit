@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from abc import abstractmethod
 import copy
+from abc import abstractmethod
 from dataclasses import InitVar, dataclass, field
 from typing import (Callable, ClassVar, Dict, List, Mapping, Optional, Tuple,
                     Type, cast)
@@ -125,6 +125,7 @@ class SchemeFunctionType(SchemeValueType):
     def type_name(self) -> sexp.SSym:
         return sexp.SSym('function')
 
+
 @dataclass(frozen=True)
 class SchemeQuotedType(SchemeObjectType):
     expr_type: Type[sexp.SExp]
@@ -185,7 +186,7 @@ class FunctionTypeAnalyzer(Visitor):
     def get_expr_type(self, expr: sexp.SExp) -> SchemeObjectType:
         return self._expr_types[SExpWrapper(expr)]
 
-    def _set_expr_type(self, expr: sexp.SExp, type_: SchemeObjectType) -> None:
+    def set_expr_type(self, expr: sexp.SExp, type_: SchemeObjectType) -> None:
         self._expr_types[SExpWrapper(expr)] = type_
 
     def expr_type_known(self, expr: sexp.SExp) -> bool:
@@ -205,7 +206,7 @@ class FunctionTypeAnalyzer(Visitor):
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         if func.is_lambda:
-            self._set_expr_type(func, SchemeFunctionType(len(func.params)))
+            self.set_expr_type(func, SchemeFunctionType(len(func.params)))
             # Lambda bodies will be analyzed separately when they're called
         else:
             for param in func.params:
@@ -216,62 +217,54 @@ class FunctionTypeAnalyzer(Visitor):
                 len(func.params),
                 self.get_expr_type(list(func.body)[-1])
             )
-            self._set_expr_type(func, self._function_type)
+            self.set_expr_type(func, self._function_type)
 
     def visit_SNum(self, num: sexp.SNum) -> None:
-        self._set_expr_type(num, SchemeNum)
+        self.set_expr_type(num, SchemeNum)
         self.set_expr_value(num, num)
 
     def visit_SBool(self, sbool: sexp.SBool) -> None:
-        self._set_expr_type(sbool, SchemeBool)
+        self.set_expr_type(sbool, SchemeBool)
         self.set_expr_value(sbool, sbool)
 
     def visit_SSym(self, sym: sexp.SSym) -> None:
         if sym in self._param_types:
-            self._set_expr_type(sym, self._param_types[sym])
+            self.set_expr_type(sym, self._param_types[sym])
         elif sym in _BUILTINS_FUNC_TYPES:
-            self._set_expr_type(sym, _BUILTINS_FUNC_TYPES[sym])
+            self.set_expr_type(sym, _BUILTINS_FUNC_TYPES[sym])
         elif sym in self._global_env:
             func = self._global_env[sym]
             assert isinstance(func, sexp.SFunction)
-            self._set_expr_type(sym, SchemeFunctionType(len(func.params)))
+            self.set_expr_type(sym, SchemeFunctionType(len(func.params)))
         else:
-            self._set_expr_type(sym, SchemeObject)
+            self.set_expr_type(sym, SchemeObject)
 
     def visit_SVect(self, vect: sexp.SVect) -> None:
-        self._set_expr_type(vect, SchemeVectType(len(vect.items)))
+        self.set_expr_type(vect, SchemeVectType(len(vect.items)))
 
     def visit_Quote(self, quote: sexp.Quote) -> None:
         type_: SchemeObjectType
         if isinstance(quote.expr, sexp.SPair) and quote.expr.is_list():
             # Quoted lists are turned into pairs
-            self._set_expr_type(quote, SchemeVectType(2))
+            self.set_expr_type(quote, SchemeVectType(2))
         elif isinstance(quote.expr, sexp.SSym):
-            self._set_expr_type(quote, SchemeSym)
+            self.set_expr_type(quote, SchemeSym)
         else:
-            self._set_expr_type(quote, SchemeQuotedType(type(quote.expr)))
+            self.set_expr_type(quote, SchemeQuotedType(type(quote.expr)))
 
     def visit_SCall(self, call: sexp.SCall) -> None:
         super().visit_SCall(call)
-        type_query_val = self._get_type_query_value(call)
-        if type_query_val is not None:
-            self._set_expr_type(call, SchemeBool)
-            self.set_expr_value(call, sexp.SBool(type_query_val))
-        elif (isinstance(call.func, sexp.SSym)
+        if (isinstance(call.func, sexp.SSym)
                 and call.func in _builtin_const_exprs):
             _builtin_const_exprs[call.func](self).eval_expr(call)
-        elif call.func == sexp.SSym('vector-make') and len(call.args) == 2:
-            size_arg = call.args[0]
-            size = size_arg.value if isinstance(size_arg, sexp.SNum) else None
-            self._set_expr_type(call, SchemeVectType(size))
         elif self.expr_type_known(call.func):
             func_type = self.get_expr_type(call.func)
             if isinstance(func_type, SchemeFunctionType):
-                self._set_expr_type(call, func_type.return_type)
+                self.set_expr_type(call, func_type.return_type)
             else:
-                self._set_expr_type(call, SchemeObject)
+                self.set_expr_type(call, SchemeObject)
         else:
-            self._set_expr_type(call, SchemeObject)
+            self.set_expr_type(call, SchemeObject)
 
     def visit_SConditional(self, cond: sexp.SConditional) -> None:
         super().visit_SConditional(cond)
@@ -284,47 +277,11 @@ class FunctionTypeAnalyzer(Visitor):
             expr_val = self.get_expr_value(cond.test)
             assert isinstance(expr_val, sexp.SBool)
             if expr_val.value:
-                self._set_expr_type(cond, then_type)
+                self.set_expr_type(cond, then_type)
             else:
-                self._set_expr_type(cond, else_type)
+                self.set_expr_type(cond, else_type)
         else:
-            self._set_expr_type(cond, then_type.join_with(else_type))
-
-    def _get_type_query_value(self, query: sexp.SCall) -> Optional[bool]:
-        if self._expr_types is None:
-            return None
-
-        func_name = (query.func.name if isinstance(query.func, sexp.SFunction)
-                     else query.func)
-        if (not isinstance(func_name, sexp.SSym)
-                or func_name not in self._TYPE_QUERIES):
-            return None
-
-        if len(query.args) != 1:
-            return None
-
-        type_query_arg = query.args[0]
-        if not self.expr_type_known(type_query_arg):
-            return None
-
-        # The type being SchemeObject probably indicates that
-        # we don't know the type, so we don't know for sure if the
-        # query is false.
-        if self.get_expr_type(type_query_arg) == SchemeObject:
-            return None
-
-        return (self.get_expr_type(type_query_arg)
-                < self._TYPE_QUERIES[cast(sexp.SSym, query.func)])
-
-    _TYPE_QUERIES: Dict[sexp.SSym, SchemeObjectType] = {
-        sexp.SSym('number?'): SchemeNum,
-        sexp.SSym('symbol?'): SchemeSym,
-        sexp.SSym('vector?'): SchemeVectType(None),
-        sexp.SSym('function?'): SchemeFunctionType(None),
-        sexp.SSym('bool?'): SchemeBool,
-        sexp.SSym('pair?'): SchemeVectType(2),
-        sexp.SSym('nil?'): SchemeVectType(0),
-    }
+            self.set_expr_type(cond, then_type.join_with(else_type))
 
 
 _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
@@ -385,13 +342,16 @@ _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
 }
 
 
-@dataclass(eq=False)
-class ConstCallExprEvaler:
-    expr_types: FunctionTypeAnalyzer
-    expected_arg_types: ClassVar[Tuple[SchemeObjectType]]
-    require_known_values: ClassVar[bool]
+class BuiltinCallTypeEvaler:
+    expected_arg_types: ClassVar[Tuple[SchemeObjectType, ...]]
+    base_return_type: ClassVar[SchemeObjectType]
+
+    def __init__(self, expr_types: FunctionTypeAnalyzer):
+        self.expr_types = expr_types
 
     def eval_expr(self, call: sexp.SCall) -> None:
+        self.expr_types.set_expr_type(call, self.base_return_type)
+
         if len(call.args) != len(self.expected_arg_types):
             return
 
@@ -403,16 +363,13 @@ class ConstCallExprEvaler:
 
             arg_value = (self.expr_types.get_expr_value(arg)
                          if self.expr_types.expr_value_known(arg) else None)
-            if self.require_known_values and arg_value is None:
-                return
 
             call_args.append(CallArg(arg_type, arg_value))
 
         self._eval_expr_impl(call, *call_args)
 
-    @abstractmethod
     def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
-        ...
+        pass
 
 
 @dataclass(eq=False)
@@ -421,27 +378,105 @@ class CallArg:
     value: Optional[sexp.Value]
 
 
-_DecoratorType = Callable[[Type[ConstCallExprEvaler]],
-                          Type[ConstCallExprEvaler]]
+_DecoratorType = Callable[[Type[BuiltinCallTypeEvaler]],
+                          Type[BuiltinCallTypeEvaler]]
 
 
 def _register_const_call_expr(func_name: str) -> _DecoratorType:
-    def decorator(cls: Type[ConstCallExprEvaler]) -> Type[ConstCallExprEvaler]:
+    def decorator(cls: Type[BuiltinCallTypeEvaler]) -> Type[BuiltinCallTypeEvaler]:
         _builtin_const_exprs[sexp.SSym(func_name)] = cls
         return cls
 
     return decorator
 
 
-_builtin_const_exprs: Dict[sexp.SSym, Type[ConstCallExprEvaler]] = {}
+_builtin_const_exprs: Dict[sexp.SSym, Type[BuiltinCallTypeEvaler]] = {}
 
 
 @_register_const_call_expr('typeof')
-class Typeof(ConstCallExprEvaler):
+class Typeof(BuiltinCallTypeEvaler):
     expected_arg_types = (SchemeValueType(),)
-    require_known_values = False
+    base_return_type = SchemeSym
 
     def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
         [arg] = args
         if isinstance(arg.type_, SchemeValueType):
             self.expr_types.set_expr_value(call, arg.type_.type_name())
+
+
+@_register_const_call_expr('not')
+class Not(BuiltinCallTypeEvaler):
+    expected_arg_types = (SchemeBool,)
+    base_return_type = SchemeBool
+
+    def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
+        [arg] = args
+        if isinstance(arg.value, sexp.SBool):
+            self.expr_types.set_expr_value(call, sexp.SBool(not arg.value))
+
+
+class TypeQuery(BuiltinCallTypeEvaler):
+    expected_arg_types = (SchemeObject,)
+    base_return_type = SchemeBool
+
+    query_type: SchemeObjectType
+
+    def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
+        [type_query_arg] = args
+
+        # The type being SchemeObject probably indicates that
+        # we don't know the type, so we don't know for sure if the
+        # query is false.
+        if type_query_arg.type_ == SchemeObject:
+            return
+
+        self.expr_types.set_expr_value(
+            call,
+            sexp.SBool(type_query_arg.type_ < self.query_type))
+
+
+@_register_const_call_expr('number?')
+class IsNumber(TypeQuery):
+    query_type = SchemeNum
+
+
+@_register_const_call_expr('symbol?')
+class IsSymbol(TypeQuery):
+    query_type = SchemeSym
+
+
+@_register_const_call_expr('vector?')
+class IsVector(TypeQuery):
+    query_type = SchemeVectType(None)
+
+
+@_register_const_call_expr('function?')
+class IsFunction(TypeQuery):
+    query_type = SchemeFunctionType(None)
+
+
+@_register_const_call_expr('bool?')
+class IsBool(TypeQuery):
+    query_type = SchemeBool
+
+
+@_register_const_call_expr('pair?')
+class IsPair(TypeQuery):
+    query_type = SchemeVectType(2)
+
+
+@_register_const_call_expr('nil?')
+class IsNil(TypeQuery):
+    query_type = SchemeVectType(0)
+
+
+@_register_const_call_expr('vector-make')
+class VectorMake(BuiltinCallTypeEvaler):
+    expected_arg_types = (SchemeNum, SchemeObject)
+    base_return_type = SchemeVectType(None)
+
+    def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
+        [size_arg, _] = args
+        size = (size_arg.value.value
+                if isinstance(size_arg.value, sexp.SNum) else None)
+        self.expr_types.set_expr_type(call, SchemeVectType(size))
