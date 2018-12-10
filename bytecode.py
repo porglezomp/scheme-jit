@@ -380,7 +380,12 @@ class TypeofInst(Inst):
         env[self.dest] = env[self.value].type_name()
 
     def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
-        values[self.dest] = types[self.value].symbol()
+        val = values[self.value]
+        if val is not None:
+            values[self.dest] = val.type_name()
+            assert types[self.value].symbol() == values[self.dest]
+        else:
+            values[self.dest] = types[self.value].symbol()
 
     def __str__(self) -> str:
         return f"{self.dest} = typeof {self.value}"

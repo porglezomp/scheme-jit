@@ -4,7 +4,7 @@ from queue import Queue
 from typing import DefaultDict, Dict, Iterator, List, Optional, Set, Tuple
 
 import bytecode
-from bytecode import BasicBlock, Function, TypeMap, ValueMap, Var
+from bytecode import BasicBlock, Function, TypeMap, TypeTuple, ValueMap, Var
 from scheme_types import SchemeObjectType
 from sexp import Value
 
@@ -16,6 +16,7 @@ Edge = Tuple[BasicBlock, int, BasicBlock]
 class FunctionOptimizer:
     func: Function
     prefix_counter: int = 0
+    specialization: Optional[TypeTuple] = None
     succs: Optional[DefaultDict[Id, List[Edge]]] = None
     preds: Optional[DefaultDict[Id, List[Edge]]] = None
     dominators: Optional[Dict[int, Set[BasicBlock]]] = None
@@ -78,6 +79,7 @@ class FunctionOptimizer:
 
     def block_input_maps(self, block: BasicBlock) -> Tuple[TypeMap, ValueMap]:
         assert self.preds is not None and self.info is not None
+
         # Find the maps for each incoming edge
         preds = self.preds[id(block)]
         pred_maps: List[Tuple[TypeMap, ValueMap]] = []
@@ -88,10 +90,16 @@ class FunctionOptimizer:
             else:
                 pred_maps.append((TypeMap(), ValueMap()))
 
+        if block is self.func.start and self.specialization is not None:
+            assert len(self.func.params) == len(self.specialization)
+            types = TypeMap(dict(zip(self.func.params, self.specialization)))
+            print(types)
+            pred_maps.append((types, ValueMap()))
+
         # Join all of those maps
         if pred_maps:
             types, values = copy.deepcopy(pred_maps[0])
-            for ty, val in pred_maps[1:]:
+            for ty, val in pred_maps:
                 types, values = types.join(ty), values.join(val)
         else:
             types, values = TypeMap(), ValueMap()
