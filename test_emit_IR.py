@@ -873,203 +873,154 @@ bb0:
 
     def test_specialize_in_bounds_vector_access(self) -> None:
         code = '''
-            (define (my-vector-index v n)
-                (assert (vector? v))
-                (assert (number? n))
-                (assert (number< -1 n))
-                (assert (number< n (vector-length v)))
-                (inst/load v n)
+            (define (pairy pair)
+                (vector-index pair 0)
+                (vector-set! pair 1 42)
             )'''
         optimized = self.get_optimized_func_bytecode(
             code,
             param_types={
-                sexp.SSym('v'): scheme_types.SchemeVectType(2),
-                sexp.SSym('n'): scheme_types.SchemeNumType(1)
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
             }
         )
 
         expected = '''
-function (? v n) entry=bb0
+function (? pair) entry=bb0
 bb0:
   v0 = lookup 'inst/load
-  v1 = call v0 (v, n)
-  return v1
+  v1 = call v0 (pair, 0)
+  v2 = lookup 'inst/store
+  v3 = call v2 (pair, 1, 42)
+  return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
     def test_out_of_bounds_vector_access_checks_not_removed(self) -> None:
         code = '''
-            (define (my-vector-index v n)
-                (assert (vector? v))
-                (assert (number? n))
-                (assert (number< -1 n))
-                (assert (number< n (vector-length v)))
-                (inst/load v n)
+            (define (pairy pair)
+                (vector-index pair 2)
+                (vector-set! pair 2 42)
+
+                (vector-index pair -1)
+                (vector-set! pair -1 42)
             )'''
         optimized = self.get_optimized_func_bytecode(
             code,
             param_types={
-                sexp.SSym('v'): scheme_types.SchemeVectType(2),
-                sexp.SSym('n'): scheme_types.SchemeNumType(3)
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
             }
         )
 
         expected = '''
-function (? v n) entry=bb0
+function (? pair) entry=bb0
 bb0:
-  v0 = lookup 'assert
-  v1 = lookup 'number<
-  v2 = lookup 'vector-length
-  v3 = call v2 (v)
-  v4 = call v1 (n, v3)
-  v5 = call v0 (v4)
-  v6 = lookup 'inst/load
-  v7 = call v6 (v, n)
+  v0 = lookup 'vector-index
+  v1 = call v0 (pair, 2)
+  v2 = lookup 'vector-set!
+  v3 = call v2 (pair, 2, 42)
+  v4 = lookup 'vector-index
+  v5 = call v4 (pair, -1)
+  v6 = lookup 'vector-set!
+  v7 = call v6 (pair, -1, 42)
   return v7
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
     def test_non_constant_index_checks_not_removed(self) -> None:
         code = '''
-            (define (my-vector-index v n)
-                (assert (vector? v))
-                (assert (number? n))
-                (assert (number< -1 n))
-                (assert (number< n (vector-length v)))
-                (inst/load v n)
+            (define (pairy pair)
+                (vector-index pair index)
+                (vector-set! pair index 42)
             )'''
         optimized = self.get_optimized_func_bytecode(
             code,
             param_types={
-                sexp.SSym('v'): scheme_types.SchemeVectType(2),
-                sexp.SSym('n'): scheme_types.SchemeNum
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
             }
         )
 
         expected = '''
-function (? v n) entry=bb0
+function (? pair) entry=bb0
 bb0:
-  v0 = lookup 'assert
-  v1 = lookup 'number<
-  v2 = call v1 (-1, n)
-  v3 = call v0 (v2)
-  v4 = lookup 'assert
-  v5 = lookup 'number<
-  v6 = lookup 'vector-length
-  v7 = call v6 (v)
-  v8 = call v5 (n, v7)
-  v9 = call v4 (v8)
-  v10 = lookup 'inst/load
-  v11 = call v10 (v, n)
-  return v11
+  v0 = lookup 'vector-index
+  v1 = lookup 'index
+  v2 = call v0 (pair, v1)
+  v3 = lookup 'vector-set!
+  v4 = lookup 'index
+  v5 = call v3 (pair, v4, 42)
+  return v5
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
     def test_vector_access_unknown_vector_size(self) -> None:
         code = '''
-            (define (my-vector-index v n)
-                (assert (vector? v))
-                (assert (number? n))
-                (assert (number< -1 n))
-                (assert (number< n (vector-length v)))
-                (inst/load v n)
+            (define (pairy pair)
+                (vector-index pair 0)
+                (vector-set! pair 1 42)
             )'''
         optimized = self.get_optimized_func_bytecode(
             code,
             param_types={
-                sexp.SSym('v'): scheme_types.SchemeVectType(None),
-                sexp.SSym('n'): scheme_types.SchemeNumType(0)
+                sexp.SSym('pair'): scheme_types.SchemeVectType(None),
             }
         )
 
         expected = '''
-function (? v n) entry=bb0
+function (? pair) entry=bb0
 bb0:
-  v0 = lookup 'assert
-  v1 = lookup 'number<
-  v2 = lookup 'vector-length
-  v3 = call v2 (v)
-  v4 = call v1 (n, v3)
-  v5 = call v0 (v4)
-  v6 = lookup 'inst/load
-  v7 = call v6 (v, n)
-  return v7
+  v0 = lookup 'vector-index
+  v1 = call v0 (pair, 0)
+  v2 = lookup 'vector-set!
+  v3 = call v2 (pair, 1, 42)
+  return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
     def test_vector_access_non_vector(self) -> None:
         code = '''
-            (define (my-vector-index v n)
-                (assert (vector? v))
-                (assert (number? n))
-                (assert (number< -1 n))
-                (assert (number< n (vector-length v)))
-                (inst/load v n)
+            (define (pairy pair)
+                (vector-index pair 0)
+                (vector-set! pair 1 42)
             )'''
         optimized = self.get_optimized_func_bytecode(
             code,
             param_types={
-                sexp.SSym('v'): scheme_types.SchemeObject,
-                sexp.SSym('n'): scheme_types.SchemeNumType(0)
+                sexp.SSym('pair'): scheme_types.SchemeObject,
             }
         )
 
         expected = '''
-function (? v n) entry=bb0
+function (? pair) entry=bb0
 bb0:
-  v0 = lookup 'assert
-  v1 = lookup 'vector?
-  v2 = call v1 (v)
-  v3 = call v0 (v2)
-  v4 = lookup 'assert
-  v5 = lookup 'number<
-  v6 = lookup 'vector-length
-  v7 = call v6 (v)
-  v8 = call v5 (n, v7)
-  v9 = call v4 (v8)
-  v10 = lookup 'inst/load
-  v11 = call v10 (v, n)
-  return v11
+  v0 = lookup 'vector-index
+  v1 = call v0 (pair, 0)
+  v2 = lookup 'vector-set!
+  v3 = call v2 (pair, 1, 42)
+  return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
     def test_vector_access_non_number_index(self) -> None:
         code = '''
-            (define (my-vector-index v n)
-                (assert (vector? v))
-                (assert (number? n))
-                (assert (number< -1 n))
-                (assert (number< n (vector-length v)))
-                (inst/load v n)
+            (define (pairy pair)
+                (vector-index pair true)
+                (vector-set! pair false 42)
             )'''
         optimized = self.get_optimized_func_bytecode(
             code,
             param_types={
-                sexp.SSym('v'): scheme_types.SchemeVectType(2),
-                sexp.SSym('n'): scheme_types.SchemeBoolType(True)
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
             }
         )
 
         expected = '''
-function (? v n) entry=bb0
+function (? pair) entry=bb0
 bb0:
-  v0 = lookup 'assert
-  v1 = lookup 'number?
-  v2 = call v1 (n)
-  v3 = call v0 (v2)
-  v4 = lookup 'assert
-  v5 = lookup 'number<
-  v6 = call v5 (-1, n)
-  v7 = call v4 (v6)
-  v8 = lookup 'assert
-  v9 = lookup 'number<
-  v10 = lookup 'vector-length
-  v11 = call v10 (v)
-  v12 = call v9 (n, v11)
-  v13 = call v8 (v12)
-  v14 = lookup 'inst/load
-  v15 = call v14 (v, n)
-  return v15
+  v0 = lookup 'vector-index
+  v1 = call v0 (pair, 'True)
+  v2 = lookup 'vector-set!
+  v3 = call v2 (pair, 'False, 42)
+  return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 

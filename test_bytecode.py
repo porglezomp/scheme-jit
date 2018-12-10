@@ -8,7 +8,7 @@ from bytecode import Binop, BoolLit, NumLit, SymLit, Var
 from sexp import SBool, SNum, SSym, SVect
 
 
-class BytecodeTestCast(unittest.TestCase):
+class BytecodeTestCase(unittest.TestCase):
     def test_example_recursive(self) -> None:
         """
         function list? (v0) entry=bb0

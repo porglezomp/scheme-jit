@@ -14,7 +14,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
-        self.assertEqual([scheme_types.SchemeSymType('spam')], types)
+        self.assertEqual([scheme_types.SchemeSym], types)
 
     def test_quoted_list(self) -> None:
         prog = sexp.parse("'(1 2 3)")
@@ -30,7 +30,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
-        self.assertEqual([scheme_types.SchemeNumType(42)], types)
+        self.assertEqual([scheme_types.SchemeNum], types)
 
     def test_bool_literal(self) -> None:
         prog = sexp.parse("true false booly")
@@ -41,8 +41,8 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
         types = list(analyzer.get_expr_types().values())
         expected = [
-            scheme_types.SchemeBoolType(True),
-            scheme_types.SchemeBoolType(False),
+            scheme_types.SchemeBool,
+            scheme_types.SchemeBool,
             scheme_types.SchemeBool
         ]
         self.assertEqual(expected, types)
@@ -125,7 +125,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         types = list(analyzer.get_expr_types().values())
         expected = [
             scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
-            scheme_types.SchemeNumType(42),
+            scheme_types.SchemeNum,
             scheme_types.SchemeBool
         ]
         self.assertEqual(expected, types)
@@ -145,7 +145,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
             # Args to +
             scheme_types.SchemeNum,
-            scheme_types.SchemeNumType(1),
+            scheme_types.SchemeNum,
 
             # + return val
             scheme_types.SchemeNum,
@@ -163,37 +163,9 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         types = list(analyzer.get_expr_types().values())
         expected = [
             scheme_types.SchemeObject,
-            scheme_types.SchemeBoolType(True),
-            scheme_types.SchemeBoolType(False),
             scheme_types.SchemeBool,
-        ]
-        self.assertEqual(expected, types)
-
-    def test_conditional_test_true_type_is_then_branch(self) -> None:
-        prog = sexp.parse("(if true true false)")
-        analyzer = FunctionTypeAnalyzer({}, {})
-        analyzer.visit(prog)
-
-        types = list(analyzer.get_expr_types().values())
-        expected = [
-            scheme_types.SchemeBoolType(True),
-            scheme_types.SchemeBoolType(True),
-            scheme_types.SchemeBoolType(False),
-            scheme_types.SchemeBoolType(True),
-        ]
-        self.assertEqual(expected, types)
-
-    def test_conditional_test_false_type_is_else_branch(self) -> None:
-        prog = sexp.parse("(if false true false)")
-        analyzer = FunctionTypeAnalyzer({}, {})
-        analyzer.visit(prog)
-
-        types = list(analyzer.get_expr_types().values())
-        expected = [
-            scheme_types.SchemeBoolType(False),
-            scheme_types.SchemeBoolType(True),
-            scheme_types.SchemeBoolType(False),
-            scheme_types.SchemeBoolType(False),
+            scheme_types.SchemeBool,
+            scheme_types.SchemeBool,
         ]
         self.assertEqual(expected, types)
 
@@ -205,8 +177,8 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         types = list(analyzer.get_expr_types().values())
         expected = [
             scheme_types.SchemeObject,
-            scheme_types.SchemeNumType(42),
-            scheme_types.SchemeBoolType(False),
+            scheme_types.SchemeNum,
+            scheme_types.SchemeBool,
             scheme_types.SchemeObject,
         ]
         self.assertEqual(expected, types)
@@ -219,9 +191,9 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         types = list(analyzer.get_expr_types().values())
         expected = [
             scheme_types.SchemeObject,
-            scheme_types.SchemeNumType(42),
-            scheme_types.SchemeNumType(42),
-            scheme_types.SchemeNumType(42),
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
         ]
         self.assertEqual(expected, types)
 
@@ -233,8 +205,8 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         types = list(analyzer.get_expr_types().values())
         expected = [
             scheme_types.SchemeObject,
-            scheme_types.SchemeNumType(42),
-            scheme_types.SchemeNumType(43),
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
             scheme_types.SchemeNum,
         ]
         self.assertEqual(expected, types)
@@ -324,37 +296,9 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         expected = [
             scheme_types.SchemeFunctionType(
                 2, scheme_types.SchemeVectType(None)),
-            scheme_types.SchemeNumType(3),
-            scheme_types.SchemeBoolType(True),
+            scheme_types.SchemeNum,
+            scheme_types.SchemeBool,
             scheme_types.SchemeVectType(3),
-        ]
-        self.assertEqual(expected, types)
-
-    def test_vector_make_known_size_param(self) -> None:
-        prog = sexp.parse("(define (spam size) (vector-make size true))")
-        analyzer = FunctionTypeAnalyzer(
-            {sexp.SSym('size'): scheme_types.SchemeNumType(4)}, {})
-        analyzer.visit(prog)
-
-        types = list(analyzer.get_expr_types().values())
-        expected = [
-            # size param
-            scheme_types.SchemeNumType(4),
-
-            # vector-make
-            scheme_types.SchemeFunctionType(
-                2, scheme_types.SchemeVectType(None)),
-
-            # size use
-            scheme_types.SchemeNumType(4),
-            scheme_types.SchemeBoolType(True),
-
-            # return type
-            scheme_types.SchemeVectType(4),
-
-            # function type
-            scheme_types.SchemeFunctionType(
-                1, scheme_types.SchemeVectType(4)),
         ]
         self.assertEqual(expected, types)
 
@@ -375,7 +319,7 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
 
             # size use
             scheme_types.SchemeNum,
-            scheme_types.SchemeBoolType(True),
+            scheme_types.SchemeBool,
 
             # return type
             scheme_types.SchemeVectType(None),

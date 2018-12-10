@@ -36,13 +36,14 @@ SchemeBottom = SchemeBottomType()
 
 @dataclass(frozen=True)
 class SchemeNumType(SchemeObjectType):
-    value: Optional[int] = None
+    pass
+    # value: Optional[int] = None
 
-    def join_with(self, other: object) -> SchemeObjectType:
-        if isinstance(other, SchemeNumType):
-            return self if self.value == other.value else SchemeNum
+    # def join_with(self, other: object) -> SchemeObjectType:
+    #     if isinstance(other, SchemeNumType):
+    #         return self if self.value == other.value else SchemeNum
 
-        return super().join_with(other)
+    #     return super().join_with(other)
 
 
 SchemeNum = SchemeNumType()
@@ -50,13 +51,14 @@ SchemeNum = SchemeNumType()
 
 @dataclass(frozen=True)
 class SchemeBoolType(SchemeObjectType):
-    value: Optional[bool] = None
+    pass
+    # value: Optional[bool] = None
 
-    def join_with(self, other: object) -> SchemeObjectType:
-        if isinstance(other, SchemeBoolType):
-            return self if self.value == other.value else SchemeBool
+    # def join_with(self, other: object) -> SchemeObjectType:
+    #     if isinstance(other, SchemeBoolType):
+    #         return self if self.value == other.value else SchemeBool
 
-        return super().join_with(other)
+    #     return super().join_with(other)
 
 
 SchemeBool = SchemeBoolType()
@@ -64,13 +66,14 @@ SchemeBool = SchemeBoolType()
 
 @dataclass(frozen=True)
 class SchemeSymType(SchemeObjectType):
-    value: Optional[str] = None
+    pass
+    # value: Optional[str] = None
 
-    def join_with(self, other: object) -> SchemeObjectType:
-        if isinstance(other, SchemeBoolType):
-            return self if self.value == other.value else SchemeSym
+    # def join_with(self, other: object) -> SchemeObjectType:
+    #     if isinstance(other, SchemeBoolType):
+    #         return self if self.value == other.value else SchemeSym
 
-        return super().join_with(other)
+    #     return super().join_with(other)
 
 
 SchemeSym = SchemeSymType()
@@ -178,10 +181,10 @@ class FunctionTypeAnalyzer(Visitor):
             self._set_expr_type(func, self._function_type)
 
     def visit_SNum(self, num: sexp.SNum) -> None:
-        self._set_expr_type(num, SchemeNumType(num.value))
+        self._set_expr_type(num, SchemeNum)
 
     def visit_SBool(self, sbool: sexp.SBool) -> None:
-        self._set_expr_type(sbool, SchemeBoolType(sbool.value))
+        self._set_expr_type(sbool, SchemeBool)
 
     def visit_SSym(self, sym: sexp.SSym) -> None:
         if sym in self._param_types:
@@ -190,7 +193,6 @@ class FunctionTypeAnalyzer(Visitor):
             self._set_expr_type(sym, _BUILTINS_FUNC_TYPES[sym])
         elif sym in self._global_env:
             func = self._global_env[sym]
-            # FIXME: replace with .scheme_type()
             assert isinstance(func, sexp.SFunction)
             self._set_expr_type(sym, SchemeFunctionType(len(func.params)))
         else:
@@ -205,17 +207,16 @@ class FunctionTypeAnalyzer(Visitor):
             # Quoted lists are turned into pairs
             self._set_expr_type(quote, SchemeVectType(2))
         elif isinstance(quote.expr, sexp.SSym):
-            self._set_expr_type(quote, SchemeSymType(quote.expr.name))
+            self._set_expr_type(quote, SchemeSym)
         else:
             self._set_expr_type(quote, SchemeQuotedType(type(quote.expr)))
 
     def visit_SCall(self, call: sexp.SCall) -> None:
         super().visit_SCall(call)
         if call.func == sexp.SSym('vector-make') and len(call.args) == 2:
-            size_type = self.get_expr_type(call.args[0])
-            vector_len = (cast(SchemeNumType, size_type).value
-                          if size_type < SchemeNum else None)
-            self._set_expr_type(call, SchemeVectType(vector_len))
+            size_arg = call.args[0]
+            size = size_arg.value if isinstance(size_arg, sexp.SNum) else None
+            self._set_expr_type(call, SchemeVectType(size))
         elif self.expr_type_known(call.func):
             func_type = self.get_expr_type(call.func)
             if isinstance(func_type, SchemeFunctionType):
