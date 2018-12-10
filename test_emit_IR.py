@@ -1448,3 +1448,127 @@ bb0:
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_eq_specialization_both_num(self) -> None:
+        code = '''
+            (define (= x y)
+                (if (not (symbol= (typeof x) (typeof y)))
+                    false
+                    (if (symbol? x)
+                        (symbol= x y)
+                        (if (number? x)
+                            (number= x y)
+                            (if (vector? x)
+                                (vector= x y)
+                                (pointer= x y))))))
+        '''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('x'): scheme_types.SchemeNum,
+                sexp.SSym('y'): scheme_types.SchemeNum,
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+        self.fail()
+
+    def test_eq_specialization_both_sym_lit(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                sexp.SSym('x'): scheme_types.SchemeSym,
+                sexp.SSym('y'): scheme_types.SchemeSym,
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+        self.fail()
+
+    def test_eq_specialization_both_vector(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                # Length shouldn't matter here
+                sexp.SSym('x'): scheme_types.SchemeVectType(3),
+                sexp.SSym('y'): scheme_types.SchemeVectType(1),
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+        self.fail()
+
+    def test_eq_specialization_both_bool(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                sexp.SSym('x'): scheme_types.SchemeBool,
+                sexp.SSym('y'): scheme_types.SchemeBool,
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+        self.fail()
+
+    def test_eq_specialization_both_func(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                # Arity shouldn't matter here
+                sexp.SSym('x'): scheme_types.SchemeFunctionType(1),
+                sexp.SSym('y'): scheme_types.SchemeFunctionType(2),
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+        self.fail()
+
+    def test_eq_specialization_different_types(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                sexp.SSym('x'): scheme_types.SchemeBool,
+                sexp.SSym('y'): scheme_types.SchemeSym,
+            }
+        )
+
+        expected = '''
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+        self.fail()
+
+
+_EQUAL_CODE = '''
+    (define (equal x y)
+        (if (not (symbol= (typeof x) (typeof y)))
+            false
+            (if (symbol? x)
+                (symbol= x y)
+                (if (number? x)
+                    (number= x y)
+                    (if (vector? x)
+                        (vector= x y)
+                        (pointer= x y)
+                    )
+                )
+            )
+        )
+    )'''

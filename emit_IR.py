@@ -266,10 +266,9 @@ class ExpressionEmitter(Visitor):
     def visit_SCall(self, call: sexp.SCall) -> None:
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
-        if call.func == sexp.SSym('assert') and len(call.args) == 1:
-            if self._is_true_type_assertion(call.args[0]):
-                self.result = bytecode.NumLit(sexp.SNum(0))
-                return
+        if self._is_true_assertion(call):
+            self.result = bytecode.NumLit(sexp.SNum(0))
+            return
 
         tail_call_data = self._get_tail_call_data(call)
         is_known_function = self._is_known_function(call)
@@ -306,6 +305,19 @@ class ExpressionEmitter(Visitor):
 
             self.end_block.add_inst(call_instr)
             self.result = call_result_var
+
+    def _is_true_assertion(self, call: sexp.SCall) -> bool:
+        if self._expr_types is None:
+            return False
+
+        if call.func != sexp.SSym('assert') or len(call.args) != 1:
+            return False
+
+        call_arg = call.args[0]
+        if not self._expr_types.expr_value_known(call_arg):
+            return False
+
+        return self._expr_types.get_expr_value(call_arg) == sexp.SBool(True)
 
     def _get_tail_call_data(self, call: sexp.SCall) -> Optional[TailCallData]:
         if (self._tail_calls is None
@@ -451,35 +463,35 @@ class ExpressionEmitter(Visitor):
 
         return args
 
-    def _is_true_type_assertion(self, assert_arg: sexp.SExp) -> bool:
-        if self._expr_types is None:
-            return False
+    # def _is_true_type_query(self, query: sexp.SExp) -> bool:
+    #     if self._expr_types is None:
+    #         return False
 
-        if not isinstance(assert_arg, sexp.SCall):
-            return False
+    #     if not isinstance(query, sexp.SCall):
+    #         return False
 
-        if assert_arg.func not in self._TYPE_QUERIES:
-            return False
+    #     if query.func not in self._TYPE_QUERIES:
+    #         return False
 
-        if len(assert_arg.args) != 1:
-            return False
+    #     if len(query.args) != 1:
+    #         return False
 
-        type_query_arg = assert_arg.args[0]
-        if not self._expr_types.expr_type_known(type_query_arg):
-            return False
+    #     type_query_arg = query.args[0]
+    #     if not self._expr_types.expr_type_known(type_query_arg):
+    #         return False
 
-        return (self._expr_types.get_expr_type(type_query_arg)
-                < self._TYPE_QUERIES[cast(sexp.SSym, assert_arg.func)])
+    #     return (self._expr_types.get_expr_type(type_query_arg)
+    #             < self._TYPE_QUERIES[cast(sexp.SSym, query.func)])
 
-    _TYPE_QUERIES: Dict[sexp.SSym, scheme_types.SchemeObjectType] = {
-        sexp.SSym('number?'): scheme_types.SchemeNum,
-        sexp.SSym('symbol?'): scheme_types.SchemeSym,
-        sexp.SSym('vector?'): scheme_types.SchemeVectType(None),
-        sexp.SSym('function?'): scheme_types.SchemeFunctionType(None),
-        sexp.SSym('bool?'): scheme_types.SchemeBool,
-        sexp.SSym('pair?'): scheme_types.SchemeVectType(2),
-        sexp.SSym('nil?'): scheme_types.SchemeVectType(0),
-    }
+    # _TYPE_QUERIES: Dict[sexp.SSym, scheme_types.SchemeObjectType] = {
+    #     sexp.SSym('number?'): scheme_types.SchemeNum,
+    #     sexp.SSym('symbol?'): scheme_types.SchemeSym,
+    #     sexp.SSym('vector?'): scheme_types.SchemeVectType(None),
+    #     sexp.SSym('function?'): scheme_types.SchemeFunctionType(None),
+    #     sexp.SSym('bool?'): scheme_types.SchemeBool,
+    #     sexp.SSym('pair?'): scheme_types.SchemeVectType(2),
+    #     sexp.SSym('nil?'): scheme_types.SchemeVectType(0),
+    # }
 
     def _add_is_function_check(
             self, function_expr: bytecode.Parameter,

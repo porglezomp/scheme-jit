@@ -150,6 +150,7 @@ class FunctionTypeAnalyzer(Visitor):
                  global_env: Dict[sexp.SSym, sexp.Value]):
         self._param_types = param_types
         self._expr_types: Dict[SExpWrapper, SchemeObjectType] = {}
+        self._expr_values: Dict[SExpWrapper, sexp.Value] = {}
 
         self._global_env = global_env
 
@@ -171,6 +172,18 @@ class FunctionTypeAnalyzer(Visitor):
     def expr_type_known(self, expr: sexp.SExp) -> bool:
         return SExpWrapper(expr) in self._expr_types
 
+    def get_expr_values(self) -> Dict[SExpWrapper, sexp.Value]:
+        return copy.copy(self._expr_values)
+
+    def get_expr_value(self, expr: sexp.SExp) -> sexp.Value:
+        return self._expr_values[SExpWrapper(expr)]
+
+    def expr_value_known(self, expr: sexp.SExp) -> bool:
+        return SExpWrapper(expr) in self._expr_values
+
+    def _set_expr_value(self, expr: sexp.SExp, value: sexp.Value) -> None:
+        self._expr_values[SExpWrapper(expr)] = value
+
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         if func.is_lambda:
             self._set_expr_type(func, SchemeFunctionType(len(func.params)))
@@ -188,9 +201,11 @@ class FunctionTypeAnalyzer(Visitor):
 
     def visit_SNum(self, num: sexp.SNum) -> None:
         self._set_expr_type(num, SchemeNum)
+        self._set_expr_value(num, num)
 
     def visit_SBool(self, sbool: sexp.SBool) -> None:
         self._set_expr_type(sbool, SchemeBool)
+        self._set_expr_value(sbool, sbool)
 
     def visit_SSym(self, sym: sexp.SSym) -> None:
         if sym in self._param_types:
@@ -219,7 +234,11 @@ class FunctionTypeAnalyzer(Visitor):
 
     def visit_SCall(self, call: sexp.SCall) -> None:
         super().visit_SCall(call)
-        if call.func == sexp.SSym('vector-make') and len(call.args) == 2:
+        type_query_val = self._get_type_query_value(call)
+        if type_query_val is not None:
+            self._set_expr_type(call, SchemeBool)
+            self._set_expr_value(call, sexp.SBool(type_query_val))
+        elif call.func == sexp.SSym('vector-make') and len(call.args) == 2:
             size_arg = call.args[0]
             size = size_arg.value if isinstance(size_arg, sexp.SNum) else None
             self._set_expr_type(call, SchemeVectType(size))
@@ -237,7 +256,53 @@ class FunctionTypeAnalyzer(Visitor):
 
         then_type = self.get_expr_type(cond.then_expr)
         else_type = self.get_expr_type(cond.else_expr)
-        self._set_expr_type(cond, then_type.join_with(else_type))
+
+        if (self.get_expr_type(cond.test) == SchemeBool
+                and self.expr_value_known(cond.test)):
+            expr_val = self.get_expr_value(cond.test)
+            assert isinstance(expr_val, sexp.SBool)
+            if expr_val.value:
+                self._set_expr_type(cond, then_type)
+            else:
+                self._set_expr_type(cond, else_type)
+        else:
+            self._set_expr_type(cond, then_type.join_with(else_type))
+
+    def _get_type_query_value(self, query: sexp.SCall) -> Optional[bool]:
+        if self._expr_types is None:
+            return None
+
+        func_name = (query.func.name if isinstance(query.func, sexp.SFunction)
+                     else query.func)
+        if (not isinstance(func_name, sexp.SSym)
+                or func_name not in self._TYPE_QUERIES):
+            return None
+
+        if len(query.args) != 1:
+            return None
+
+        type_query_arg = query.args[0]
+        if not self.expr_type_known(type_query_arg):
+            return None
+
+        # The type being SchemeObject probably indicates that
+        # we don't know the type, so we don't know for sure if the
+        # query is false.
+        if self.get_expr_type(type_query_arg) == SchemeObject:
+            return None
+
+        return (self.get_expr_type(type_query_arg)
+                < self._TYPE_QUERIES[cast(sexp.SSym, query.func)])
+
+    _TYPE_QUERIES: Dict[sexp.SSym, SchemeObjectType] = {
+        sexp.SSym('number?'): SchemeNum,
+        sexp.SSym('symbol?'): SchemeSym,
+        sexp.SSym('vector?'): SchemeVectType(None),
+        sexp.SSym('function?'): SchemeFunctionType(None),
+        sexp.SSym('bool?'): SchemeBool,
+        sexp.SSym('pair?'): SchemeVectType(2),
+        sexp.SSym('nil?'): SchemeVectType(0),
+    }
 
 
 _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
@@ -293,4 +358,6 @@ _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
     sexp.SSym('vector-make/recur'): (
         SchemeFunctionType(4, SchemeVectType(None))),
     sexp.SSym('vector-make'): SchemeFunctionType(2, SchemeVectType(None)),
+
+    sexp.SSym('cons'): SchemeVectType(2)
 }

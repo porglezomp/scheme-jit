@@ -303,6 +303,64 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         ]
         self.assertEqual(expected, types)
 
+    def test_conditional_test_value_known_then_type_used(self) -> None:
+        prog = sexp.parse("(if (number? 43) 42 false)")
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            scheme_types.SchemeFunctionType(
+                arity=1, return_type=scheme_types.SchemeBool),
+            scheme_types.SchemeNum,
+            scheme_types.SchemeBool,
+
+            scheme_types.SchemeNum,
+            scheme_types.SchemeBool,
+            scheme_types.SchemeNum,
+        ]
+        self.assertEqual(expected, types)
+
+    def test_conditional_test_value_known_else_type_used(self) -> None:
+        prog = sexp.parse("(if (number? true) 42 false)")
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            # test
+            scheme_types.SchemeFunctionType(
+                arity=1, return_type=scheme_types.SchemeBool),
+            scheme_types.SchemeBool,
+            scheme_types.SchemeBool,
+
+            # then
+            scheme_types.SchemeNum,
+            # else
+            scheme_types.SchemeBool,
+            # overall
+            scheme_types.SchemeBool,
+        ]
+        self.assertEqual(expected, types)
+
+    def test_conditional_test_value_unknown_type_query_given_obj(self) -> None:
+        prog = sexp.parse("(if (number? obj) 42 false)")
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            scheme_types.SchemeFunctionType(
+                arity=1, return_type=scheme_types.SchemeBool),
+            scheme_types.SchemeObject,
+            scheme_types.SchemeBool,
+
+            scheme_types.SchemeNum,
+            scheme_types.SchemeBool,
+            scheme_types.SchemeObject,
+        ]
+        self.assertEqual(expected, types)
+
     def test_vector_make_literal_size_val(self) -> None:
         prog = sexp.parse("(vector-make 3 true)")
         analyzer = FunctionTypeAnalyzer({}, {})
