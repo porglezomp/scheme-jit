@@ -176,9 +176,27 @@ class BoolLit(Parameter):
         return scheme_types.SchemeBool
 
     def __str__(self) -> str:
-        return f"'{self.value}"
+        return f"{self.value}"
 
     def freshen(self, prefix: str) -> BoolLit:
+        return self
+
+
+@dataclass(frozen=True)
+class FuncLit(Parameter):
+    func: sexp.SFunction
+
+    def lookup_self(self, env: Dict[Var, Value]) -> Value:
+        return self.func
+
+    def lookup_self_type(
+            self, env: Dict[Var, SchemeObjectType]) -> SchemeObjectType:
+        return scheme_types.SchemeFunctionType(len(self.func.params))
+
+    def __str__(self) -> str:
+        return f"{self.func}"
+
+    def freshen(self, prefix: str) -> FuncLit:
         return self
 
 

@@ -244,6 +244,10 @@ class SFunction(Value):
     def scheme_type(self) -> scheme_types.SchemeFunctionType:
         return scheme_types.SchemeFunctionType(len(self.params))
 
+    def __str__(self) -> str:
+        params = ''.join(' ' + p.name for p in self.params)
+        return f"<function ({self.name}{params}) at {id(self):x}>"
+
 
 @dataclass(frozen=True)
 class SCall(SExp):

@@ -4,9 +4,10 @@ from queue import Queue
 from typing import DefaultDict, Dict, Iterator, List, Optional, Set, Tuple
 
 import bytecode
-from bytecode import BasicBlock, Function, TypeMap, TypeTuple, ValueMap, Var
+from bytecode import (BasicBlock, CallInst, Function, LookupInst, TypeMap,
+                      TypeTuple, ValueMap, Var)
 from scheme_types import SchemeObjectType
-from sexp import Value
+from sexp import SSym, Value
 
 Id = int
 Edge = Tuple[BasicBlock, int, BasicBlock]
@@ -93,7 +94,6 @@ class FunctionOptimizer:
         if block is self.func.start and self.specialization is not None:
             assert len(self.func.params) == len(self.specialization)
             types = TypeMap(dict(zip(self.func.params, self.specialization)))
-            print(types)
             pred_maps.append((types, ValueMap()))
 
         # Join all of those maps
@@ -116,6 +116,18 @@ class FunctionOptimizer:
             types, values = self.block_input_maps(block)
             self.info[id(block)] = self.block_transfer(block, types, values)
 
+    def find_lookups(self) -> Iterator[Tuple[BasicBlock, int, LookupInst]]:
+        for block in self.func.blocks():
+            for i, inst in enumerate(block.instructions):
+                if isinstance(inst, LookupInst):
+                    yield block, i, inst
+
+    def find_calls(self) -> Iterator[Tuple[BasicBlock, int, CallInst]]:
+        for block in self.func.blocks():
+            for i, inst in enumerate(block.instructions):
+                if isinstance(inst, CallInst):
+                    yield block, i, inst
+
     def mark_vars(self, func: Function) -> Function:
         func = copy.deepcopy(func)
         prefix = f"inl{self.prefix_counter}"
@@ -124,6 +136,10 @@ class FunctionOptimizer:
             for inst in block.instructions:
                 inst.freshen(prefix)
         return func
+
+    def should_inline(self, name: SSym) -> bool:
+        SHOULD_INLINE = ('assert', 'number?')
+        return name.name.startswith('inst/') or name.name in SHOULD_INLINE
 
     def inline_at_block_tail(self, block: BasicBlock, func: Function) -> None:
         assert len(block.instructions) >= 2
