@@ -131,6 +131,24 @@ class ExpressionEmitter(Visitor):
     def visit_SConditional(self, conditional: sexp.SConditional) -> None:
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
+        if (self._expr_types is not None
+                and self._expr_types.expr_value_known(conditional.test)):
+            test_val = self._expr_types.get_expr_value(conditional.test)
+            assert isinstance(test_val, sexp.SBool)
+            branch_to_emit = (conditional.then_expr if test_val.value
+                              else conditional.else_expr)
+
+            emitter = ExpressionEmitter(
+                self.parent_block, self.bb_names, self.var_names,
+                self.local_env, self.global_env,
+                function_entrypoint=self._function_entrypoint,
+                tail_calls=self._tail_calls,
+                expr_types=self._expr_types)
+            emitter.visit(branch_to_emit)
+
+            self.result = emitter.result
+            return
+
         test_emitter = ExpressionEmitter(
             self.parent_block, self.bb_names, self.var_names,
             self.local_env, self.global_env,
