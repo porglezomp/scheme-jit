@@ -418,3 +418,40 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
             scheme_types.SchemeVectType(None),
         ]
         self.assertEqual(expected, types)
+
+
+class ConstExprTestCase(unittest.TestCase):
+    def test_typeof_object(self) -> None:
+        prog = sexp.parse('spam')
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        values = list(analyzer.get_expr_values().values())
+        self.assertEqual([], values)
+
+    def test_typeof_value(self) -> None:
+        prog = sexp.parse('''
+            (typeof num)
+            (typeof bool)
+            (typeof sym)
+            (typeof vec)
+            (typeof func)
+        ''')
+        analyzer = FunctionTypeAnalyzer({
+            sexp.SSym('num'): scheme_types.SchemeNum,
+            sexp.SSym('bool'): scheme_types.SchemeBool,
+            sexp.SSym('sym'): scheme_types.SchemeSym,
+            sexp.SSym('vec'): scheme_types.SchemeVectType(2),
+            sexp.SSym('func'): scheme_types.SchemeFunctionType(1),
+        }, {})
+        analyzer.visit(prog)
+
+        values = list(analyzer.get_expr_values().values())
+        expected = [
+            sexp.SSym('number'),
+            sexp.SSym('bool'),
+            sexp.SSym('symbol'),
+            sexp.SSym('vector'),
+            sexp.SSym('function'),
+        ]
+        self.assertEqual(expected, values)

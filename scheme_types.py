@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 import copy
 from dataclasses import InitVar, dataclass, field
-from typing import Dict, List, Mapping, Optional, Tuple, Type, cast
+from typing import (Callable, ClassVar, Dict, List, Mapping, Optional, Tuple,
+                    Type, cast)
 
 import sexp
 from visitor import Visitor
@@ -34,24 +36,36 @@ class SchemeBottomType(SchemeObjectType):
 SchemeBottom = SchemeBottomType()
 
 
+class SchemeValueType(SchemeObjectType):
+    # @abstractmethod
+    def type_name(self) -> sexp.SSym:
+        raise NotImplementedError
+        # return sexp.SSym('pointer')
+
+
 @dataclass(frozen=True)
-class SchemeNumType(SchemeObjectType):
-    pass
+class SchemeNumType(SchemeValueType):
+    def type_name(self) -> sexp.SSym:
+        return sexp.SSym('number')
 
 
 SchemeNum = SchemeNumType()
 
 
 @dataclass(frozen=True)
-class SchemeBoolType(SchemeObjectType):
-    pass
+class SchemeBoolType(SchemeValueType):
+    def type_name(self) -> sexp.SSym:
+        return sexp.SSym('bool')
 
 
 SchemeBool = SchemeBoolType()
 
 
 @dataclass(frozen=True)
-class SchemeSymType(SchemeObjectType):
+class SchemeSymType(SchemeValueType):
+    def type_name(self) -> sexp.SSym:
+        return sexp.SSym('symbol')
+
     pass
 
 
@@ -59,7 +73,7 @@ SchemeSym = SchemeSymType()
 
 
 @dataclass(frozen=True)
-class SchemeVectType(SchemeObjectType):
+class SchemeVectType(SchemeValueType):
     length: Optional[int]
 
     def __init__(self, length: Optional[int]):
@@ -68,6 +82,9 @@ class SchemeVectType(SchemeObjectType):
             self,
             'length',
             None if length is not None and length > 4 else length)
+
+    def type_name(self) -> sexp.SSym:
+        return sexp.SSym('vector')
 
     def __lt__(self, other: object) -> bool:
         if isinstance(other, SchemeVectType):
@@ -84,7 +101,7 @@ class SchemeVectType(SchemeObjectType):
 
 
 @dataclass(frozen=True)
-class SchemeFunctionType(SchemeObjectType):
+class SchemeFunctionType(SchemeValueType):
     arity: Optional[int]
     return_type: SchemeObjectType = SchemeObject
 
@@ -105,6 +122,8 @@ class SchemeFunctionType(SchemeObjectType):
 
         return super().join_with(other)
 
+    def type_name(self) -> sexp.SSym:
+        return sexp.SSym('function')
 
 @dataclass(frozen=True)
 class SchemeQuotedType(SchemeObjectType):
@@ -181,7 +200,7 @@ class FunctionTypeAnalyzer(Visitor):
     def expr_value_known(self, expr: sexp.SExp) -> bool:
         return SExpWrapper(expr) in self._expr_values
 
-    def _set_expr_value(self, expr: sexp.SExp, value: sexp.Value) -> None:
+    def set_expr_value(self, expr: sexp.SExp, value: sexp.Value) -> None:
         self._expr_values[SExpWrapper(expr)] = value
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
@@ -201,11 +220,11 @@ class FunctionTypeAnalyzer(Visitor):
 
     def visit_SNum(self, num: sexp.SNum) -> None:
         self._set_expr_type(num, SchemeNum)
-        self._set_expr_value(num, num)
+        self.set_expr_value(num, num)
 
     def visit_SBool(self, sbool: sexp.SBool) -> None:
         self._set_expr_type(sbool, SchemeBool)
-        self._set_expr_value(sbool, sbool)
+        self.set_expr_value(sbool, sbool)
 
     def visit_SSym(self, sym: sexp.SSym) -> None:
         if sym in self._param_types:
@@ -237,7 +256,10 @@ class FunctionTypeAnalyzer(Visitor):
         type_query_val = self._get_type_query_value(call)
         if type_query_val is not None:
             self._set_expr_type(call, SchemeBool)
-            self._set_expr_value(call, sexp.SBool(type_query_val))
+            self.set_expr_value(call, sexp.SBool(type_query_val))
+        elif (isinstance(call.func, sexp.SSym)
+                and call.func in _builtin_const_exprs):
+            _builtin_const_exprs[call.func](self).eval_expr(call)
         elif call.func == sexp.SSym('vector-make') and len(call.args) == 2:
             size_arg = call.args[0]
             size = size_arg.value if isinstance(size_arg, sexp.SNum) else None
@@ -361,3 +383,65 @@ _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
 
     sexp.SSym('cons'): SchemeVectType(2)
 }
+
+
+@dataclass(eq=False)
+class ConstCallExprEvaler:
+    expr_types: FunctionTypeAnalyzer
+    expected_arg_types: ClassVar[Tuple[SchemeObjectType]]
+    require_known_values: ClassVar[bool]
+
+    def eval_expr(self, call: sexp.SCall) -> None:
+        if len(call.args) != len(self.expected_arg_types):
+            return
+
+        call_args: List[CallArg] = []
+        for arg, expected_type in zip(call.args, self.expected_arg_types):
+            arg_type = self.expr_types.get_expr_type(arg)
+            if not (arg_type < expected_type):
+                return
+
+            arg_value = (self.expr_types.get_expr_value(arg)
+                         if self.expr_types.expr_value_known(arg) else None)
+            if self.require_known_values and arg_value is None:
+                return
+
+            call_args.append(CallArg(arg_type, arg_value))
+
+        self._eval_expr_impl(call, *call_args)
+
+    @abstractmethod
+    def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
+        ...
+
+
+@dataclass(eq=False)
+class CallArg:
+    type_: SchemeObjectType
+    value: Optional[sexp.Value]
+
+
+_DecoratorType = Callable[[Type[ConstCallExprEvaler]],
+                          Type[ConstCallExprEvaler]]
+
+
+def _register_const_call_expr(func_name: str) -> _DecoratorType:
+    def decorator(cls: Type[ConstCallExprEvaler]) -> Type[ConstCallExprEvaler]:
+        _builtin_const_exprs[sexp.SSym(func_name)] = cls
+        return cls
+
+    return decorator
+
+
+_builtin_const_exprs: Dict[sexp.SSym, Type[ConstCallExprEvaler]] = {}
+
+
+@_register_const_call_expr('typeof')
+class Typeof(ConstCallExprEvaler):
+    expected_arg_types = (SchemeValueType(),)
+    require_known_values = False
+
+    def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
+        [arg] = args
+        if isinstance(arg.type_, SchemeValueType):
+            self.expr_types.set_expr_value(call, arg.type_.type_name())

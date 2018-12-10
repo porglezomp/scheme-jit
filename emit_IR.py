@@ -452,11 +452,15 @@ class ExpressionEmitter(Visitor):
         if vec_arg_type.length is None:
             return None
 
-        if not isinstance(call.args[1], sexp.SNum):
+        index_arg = call.args[1]
+        if not self._expr_types.expr_value_known(index_arg):
             return None
 
-        index = call.args[1].value
-        in_bounds = index >= 0 and index < vec_arg_type.length
+        index = self._expr_types.get_expr_value(index_arg)
+        if not isinstance(index, sexp.SNum):
+            return None
+
+        in_bounds = index.value >= 0 and index.value < vec_arg_type.length
         if not in_bounds:
             return None
 
