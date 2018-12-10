@@ -24,6 +24,22 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         types = list(analyzer.get_expr_types().values())
         self.assertEqual([scheme_types.SchemeVectType(2)], types)
 
+    def test_vector_literal(self) -> None:
+        prog = sexp.parse("[1 2 3 4]")
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        self.assertEqual([scheme_types.SchemeVectType(4)], types)
+
+    def test_vector_literal_size_above_specialization_threshold(self) -> None:
+        prog = sexp.parse("[1 2 3 4 5]")
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        self.assertEqual([scheme_types.SchemeVectType(None)], types)
+
     def test_num_literal(self) -> None:
         prog = sexp.parse("42")
         analyzer = FunctionTypeAnalyzer({}, {})
@@ -327,5 +343,20 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
             # function type
             scheme_types.SchemeFunctionType(
                 1, scheme_types.SchemeVectType(None)),
+        ]
+        self.assertEqual(expected, types)
+
+    def test_vector_make_size_above_specialization_threshold(self) -> None:
+        prog = sexp.parse("(vector-make 5 true)")
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            scheme_types.SchemeFunctionType(
+                2, scheme_types.SchemeVectType(None)),
+            scheme_types.SchemeNum,
+            scheme_types.SchemeBool,
+            scheme_types.SchemeVectType(None),
         ]
         self.assertEqual(expected, types)

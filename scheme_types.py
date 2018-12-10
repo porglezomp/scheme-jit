@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from typing import Dict, Mapping, Optional, Tuple, Type, cast
 
 import sexp
@@ -61,6 +61,13 @@ SchemeSym = SchemeSymType()
 @dataclass(frozen=True)
 class SchemeVectType(SchemeObjectType):
     length: Optional[int]
+
+    def __init__(self, length: Optional[int]):
+        # https://docs.python.org/3/library/dataclasses.html#frozen-instances
+        object.__setattr__(
+            self,
+            'length',
+            None if length is not None and length > 4 else length)
 
     def __lt__(self, other: object) -> bool:
         if isinstance(other, SchemeVectType):
