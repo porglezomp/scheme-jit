@@ -37,13 +37,6 @@ SchemeBottom = SchemeBottomType()
 @dataclass(frozen=True)
 class SchemeNumType(SchemeObjectType):
     pass
-    # value: Optional[int] = None
-
-    # def join_with(self, other: object) -> SchemeObjectType:
-    #     if isinstance(other, SchemeNumType):
-    #         return self if self.value == other.value else SchemeNum
-
-    #     return super().join_with(other)
 
 
 SchemeNum = SchemeNumType()
@@ -52,13 +45,6 @@ SchemeNum = SchemeNumType()
 @dataclass(frozen=True)
 class SchemeBoolType(SchemeObjectType):
     pass
-    # value: Optional[bool] = None
-
-    # def join_with(self, other: object) -> SchemeObjectType:
-    #     if isinstance(other, SchemeBoolType):
-    #         return self if self.value == other.value else SchemeBool
-
-    #     return super().join_with(other)
 
 
 SchemeBool = SchemeBoolType()
@@ -67,13 +53,6 @@ SchemeBool = SchemeBoolType()
 @dataclass(frozen=True)
 class SchemeSymType(SchemeObjectType):
     pass
-    # value: Optional[str] = None
-
-    # def join_with(self, other: object) -> SchemeObjectType:
-    #     if isinstance(other, SchemeBoolType):
-    #         return self if self.value == other.value else SchemeSym
-
-    #     return super().join_with(other)
 
 
 SchemeSym = SchemeSymType()
@@ -229,16 +208,9 @@ class FunctionTypeAnalyzer(Visitor):
     def visit_SConditional(self, cond: sexp.SConditional) -> None:
         super().visit_SConditional(cond)
 
-        conditional_type = self.get_expr_type(cond.test)
         then_type = self.get_expr_type(cond.then_expr)
         else_type = self.get_expr_type(cond.else_expr)
-        if (not isinstance(conditional_type, SchemeBoolType)
-                or conditional_type.value is None):
-            self._set_expr_type(cond, then_type.join_with(else_type))
-        elif conditional_type.value:
-            self._set_expr_type(cond, then_type)
-        else:
-            self._set_expr_type(cond, else_type)
+        self._set_expr_type(cond, then_type.join_with(else_type))
 
 
 _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
