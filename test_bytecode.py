@@ -179,11 +179,13 @@ class BytecodeTestCase(unittest.TestCase):
                           specialization=(scheme_types.SchemeSym,)).run(env)
         assert env[Var('y')] == SBool(True)
 
-        with self.assertRaises(AssertionError):
-            bytecode.CallInst(
-                Var('y'), Var('f'), [SymLit(SSym('x'))],
-                specialization=(scheme_types.SchemeNum,)).run(env)
-        with self.assertRaises(AssertionError):
-            bytecode.CallInst(
-                Var('y'), Var('f'), [NumLit(SNum(42))],
-                specialization=(scheme_types.SchemeNum,)).run(env)
+        # If specialization not found, fall back to dynamic dispatch
+        bytecode.CallInst(
+            Var('y'), Var('f'), [SymLit(SSym('x'))],
+            specialization=(scheme_types.SchemeNum,)).run(env)
+        self.assertEqual(env[Var('y')], SBool(True))
+
+        bytecode.CallInst(
+            Var('y'), Var('f'), [NumLit(SNum(42))],
+            specialization=(scheme_types.SchemeNum,)).run(env)
+        self.assertEqual(env[Var('y')], SBool(False))

@@ -17,12 +17,13 @@ def main() -> None:
         with open(args.filename) as f:
             prog_text = f.read()
 
-    env = bytecode.EvalEnv()
+    env = bytecode.EvalEnv(optimize_tail_calls=args.optimize_tail_calls,
+                           naive_jit=args.naive_jit,
+                           bytecode_jit=args.bytecode_jit)
     runner.add_intrinsics(env)
     runner.add_builtins(env)
     runner.add_prelude(env)
-    print(runner.run(env, prog_text,
-                     optimize_tail_calls=args.transform_tail_calls))
+    print(runner.run(env, prog_text))
 
     if args.stats:
         print('-----')
@@ -50,7 +51,14 @@ def parse_args() -> argparse.Namespace:
         help="print execution stats")
 
     parser.add_argument(
-        '--transform_tail_calls', '-t', action='store_true', default=False)
+        '--optimize_tail_calls', '-t', action='store_true', default=False)
+
+    parser.add_argument(
+        '--naive_jit', '-n', action='store_true', default=False)
+
+    parser.add_argument(
+        '--bytecode_jit', '-b', action='store_true', default=False
+    )
 
     return parser.parse_args()
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import InitVar, dataclass, field
-from typing import Dict, Mapping, Optional, Tuple, Type, cast
+from typing import Dict, List, Mapping, Optional, Tuple, Type, cast
 
 import sexp
 from visitor import Visitor
@@ -123,6 +123,26 @@ class SExpWrapper:
 
     def __hash__(self) -> int:
         return hash(id(self.expr))
+
+
+class CallArgsTypeAnalyzer(Visitor):
+    def __init__(self) -> None:
+        self.arg_types: List[SchemeObjectType] = []
+
+    def visit_SFunction(self, func: sexp.SFunction) -> None:
+        self.arg_types.append(SchemeFunctionType(len(func.params)))
+
+    def visit_SNum(self, num: sexp.SNum) -> None:
+        self.arg_types.append(SchemeNum)
+
+    def visit_SBool(self, sbool: sexp.SBool) -> None:
+        self.arg_types.append(SchemeBool)
+
+    def visit_SSym(self, sym: sexp.SSym) -> None:
+        self.arg_types.append(SchemeSym)
+
+    def visit_SVect(self, vect: sexp.SVect) -> None:
+        self.arg_types.append(SchemeVectType(len(vect.items)))
 
 
 class FunctionTypeAnalyzer(Visitor):

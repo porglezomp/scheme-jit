@@ -214,12 +214,11 @@ def add_prelude(env: EvalEnv) -> None:
 eval_names = emit_IR.name_generator('__eval_expr')
 
 
-def run_code(env: EvalEnv, code: SExp,
-             optimize_tail_calls: bool = False) -> Value:
+def run_code(env: EvalEnv, code: SExp) -> Value:
     """Run a piece of code in an environment, returning its result."""
     if isinstance(code, sexp.SFunction):
         tail_calls = None
-        if optimize_tail_calls:
+        if env.optimize_tail_calls:
             tail_call_finder = TailCallFinder()
             tail_call_finder.visit(code)
             tail_calls = tail_call_finder.tail_calls
@@ -253,7 +252,7 @@ def _add_func_to_env(func: sexp.SFunction, func_emitter: FunctionEmitter,
     env._global_env[func.name] = func
 
 
-def run(env: EvalEnv, text: str, optimize_tail_calls: bool = False) -> Value:
+def run(env: EvalEnv, text: str) -> Value:
     """
     Run a piece of code in an environment, returning its result.
 
@@ -269,5 +268,5 @@ def run(env: EvalEnv, text: str, optimize_tail_calls: bool = False) -> Value:
     code = sexp.parse(text)
     result: Value = sexp.SVect([])
     for part in code:
-        result = run_code(env, part, optimize_tail_calls=optimize_tail_calls)
+        result = run_code(env, part)
     return result
