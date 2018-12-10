@@ -1473,10 +1473,13 @@ bb0:
         )
 
         expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'number=
+  v1 = call v0 (x, y) (SchemeNumType(), SchemeNumType())
+  return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
-
-        self.fail()
 
     def test_eq_specialization_both_sym_lit(self) -> None:
         optimized = self.get_optimized_func_bytecode(
@@ -1488,10 +1491,13 @@ bb0:
         )
 
         expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'symbol=
+  v1 = call v0 (x, y) (SchemeSymType(), SchemeSymType())
+  return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
-
-        self.fail()
 
     def test_eq_specialization_both_vector(self) -> None:
         optimized = self.get_optimized_func_bytecode(
@@ -1504,10 +1510,13 @@ bb0:
         )
 
         expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'vector=
+  v1 = call v0 (x, y) (SchemeVectType(length=3), SchemeVectType(length=1))
+  return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
-
-        self.fail()
 
     def test_eq_specialization_both_bool(self) -> None:
         optimized = self.get_optimized_func_bytecode(
@@ -1519,10 +1528,13 @@ bb0:
         )
 
         expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'pointer=
+  v1 = call v0 (x, y) (SchemeBoolType(), SchemeBoolType())
+  return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
-
-        self.fail()
 
     def test_eq_specialization_both_func(self) -> None:
         optimized = self.get_optimized_func_bytecode(
@@ -1535,10 +1547,15 @@ bb0:
         )
 
         expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'pointer=
+  v1 = call v0 (x, y) \
+(SchemeFunctionType(arity=1, return_type=SchemeObjectType()),\
+ SchemeFunctionType(arity=2, return_type=SchemeObjectType()))
+  return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
-
-        self.fail()
 
     def test_eq_specialization_different_types(self) -> None:
         optimized = self.get_optimized_func_bytecode(
@@ -1550,10 +1567,11 @@ bb0:
         )
 
         expected = '''
+function (? x y) entry=bb0
+bb0:
+  return 'False
         '''
         self.assertEqual(expected.strip(), optimized.strip())
-
-        self.fail()
 
 
 _EQUAL_CODE = '''

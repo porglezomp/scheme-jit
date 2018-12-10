@@ -383,7 +383,8 @@ _DecoratorType = Callable[[Type[BuiltinCallTypeEvaler]],
 
 
 def _register_const_call_expr(func_name: str) -> _DecoratorType:
-    def decorator(cls: Type[BuiltinCallTypeEvaler]) -> Type[BuiltinCallTypeEvaler]:
+    def decorator(cls: Type[BuiltinCallTypeEvaler]
+                  ) -> Type[BuiltinCallTypeEvaler]:
         _builtin_const_exprs[sexp.SSym(func_name)] = cls
         return cls
 
@@ -412,7 +413,8 @@ class Not(BuiltinCallTypeEvaler):
     def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
         [arg] = args
         if isinstance(arg.value, sexp.SBool):
-            self.expr_types.set_expr_value(call, sexp.SBool(not arg.value))
+            self.expr_types.set_expr_value(
+                call, sexp.SBool(not arg.value.value))
 
 
 class TypeQuery(BuiltinCallTypeEvaler):
@@ -468,6 +470,20 @@ class IsPair(TypeQuery):
 @_register_const_call_expr('nil?')
 class IsNil(TypeQuery):
     query_type = SchemeVectType(0)
+
+
+@_register_const_call_expr('symbol=')
+class SymbolEq(BuiltinCallTypeEvaler):
+    expected_arg_types = (SchemeSym, SchemeSym)
+    base_return_type = SchemeBool
+
+    def _eval_expr_impl(self, call: sexp.SCall, *args: CallArg) -> None:
+        [first, second] = args
+
+        if first.value is not None and second.value is not None:
+            self.expr_types.set_expr_value(
+                call,
+                sexp.SBool(first.value == second.value))
 
 
 @_register_const_call_expr('vector-make')
