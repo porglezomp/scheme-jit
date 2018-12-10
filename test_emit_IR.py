@@ -804,10 +804,10 @@ function (? first second) entry=bb0
 bb0:
   v0 = lookup 'assert
   v1 = lookup 'number?
-  v2 = call v1 (second)
-  v3 = call v0 (v2)
+  v2 = call v1 (second) (SchemeObjectType())
+  v3 = call v0 (v2) (SchemeBoolType())
   v4 = lookup 'inst/+
-  v5 = call v4 (first, second)
+  v5 = call v4 (first, second) (SchemeNumType(), SchemeObjectType())
   return v5
 '''
 
@@ -834,7 +834,7 @@ bb0:
 function (? first second) entry=bb0
 bb0:
   v0 = lookup 'inst/+
-  v1 = call v0 (first, second)
+  v1 = call v0 (first, second) (SchemeNumType(), SchemeNumType())
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -861,10 +861,10 @@ function (? first second) entry=bb0
 bb0:
   v0 = lookup 'inst/+
   v1 = lookup '+
-  v2 = call v1 (1, first)
+  v2 = call v1 (1, first) (SchemeNumType(), SchemeNumType())
   v3 = lookup '+
-  v4 = call v3 (second, 1)
-  v5 = call v0 (v2, v4)
+  v4 = call v3 (second, 1) (SchemeNumType(), SchemeNumType())
+  v5 = call v0 (v2, v4) (SchemeNumType(), SchemeNumType())
   return v5
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -888,9 +888,10 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'inst/load
-  v1 = call v0 (pair, 0)
+  v1 = call v0 (pair, 0) (SchemeVectType(length=2), SchemeNumType())
   v2 = lookup 'inst/store
-  v3 = call v2 (pair, 1, 42)
+  v3 = call v2 (pair, 1, 42) \
+(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -915,13 +916,15 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
-  v1 = call v0 (pair, 2)
+  v1 = call v0 (pair, 2) (SchemeVectType(length=2), SchemeNumType())
   v2 = lookup 'vector-set!
-  v3 = call v2 (pair, 2, 42)
+  v3 = call v2 (pair, 2, 42) \
+(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
   v4 = lookup 'vector-index
-  v5 = call v4 (pair, -1)
+  v5 = call v4 (pair, -1) (SchemeVectType(length=2), SchemeNumType())
   v6 = lookup 'vector-set!
-  v7 = call v6 (pair, -1, 42)
+  v7 = call v6 (pair, -1, 42) \
+(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
   return v7
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -944,10 +947,11 @@ function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
   v1 = lookup 'index
-  v2 = call v0 (pair, v1)
+  v2 = call v0 (pair, v1) (SchemeVectType(length=2), SchemeObjectType())
   v3 = lookup 'vector-set!
   v4 = lookup 'index
-  v5 = call v3 (pair, v4, 42)
+  v5 = call v3 (pair, v4, 42) \
+(SchemeVectType(length=2), SchemeObjectType(), SchemeNumType())
   return v5
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -969,9 +973,10 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
-  v1 = call v0 (pair, 0)
+  v1 = call v0 (pair, 0) (SchemeVectType(length=None), SchemeNumType())
   v2 = lookup 'vector-set!
-  v3 = call v2 (pair, 1, 42)
+  v3 = call v2 (pair, 1, 42) \
+(SchemeVectType(length=None), SchemeNumType(), SchemeNumType())
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -993,9 +998,10 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
-  v1 = call v0 (pair, 0)
+  v1 = call v0 (pair, 0) (SchemeObjectType(), SchemeNumType())
   v2 = lookup 'vector-set!
-  v3 = call v2 (pair, 1, 42)
+  v3 = call v2 (pair, 1, 42) \
+(SchemeObjectType(), SchemeNumType(), SchemeNumType())
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1017,17 +1023,13 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
-  v1 = call v0 (pair, 'True)
+  v1 = call v0 (pair, 'True) (SchemeVectType(length=2), SchemeBoolType())
   v2 = lookup 'vector-set!
-  v3 = call v2 (pair, 'False, 42)
+  v3 = call v2 (pair, 'False, 42) \
+(SchemeVectType(length=2), SchemeBoolType(), SchemeNumType())
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
-
-    # -------------------------------------------------------------------------
-
-    def test_call_inst_in_specialized_func_includes_types(self) -> None:
-        self.fail()
 
     # -------------------------------------------------------------------------
 
@@ -1046,7 +1048,7 @@ bb0:
         expected = '''
 function (? func) entry=bb0
 bb0:
-  v0 = call func (42)
+  v0 = call func (42) (SchemeNumType())
   return v0
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1071,7 +1073,7 @@ bb0:
   v0 = arity func
   v1 = Binop.NUM_EQ v0 2
   brn v1 wrong_arity
-  v2 = call func (42, 43)
+  v2 = call func (42, 43) (SchemeNumType(), SchemeNumType())
   return v2
 
 wrong_arity:
@@ -1099,7 +1101,7 @@ bb0:
   v0 = arity func
   v1 = Binop.NUM_EQ v0 1
   brn v1 wrong_arity
-  v2 = call func (42)
+  v2 = call func (42) (SchemeNumType())
   return v2
 
 wrong_arity:
@@ -1120,7 +1122,7 @@ wrong_arity:
 function (? ) entry=bb0
 bb0:
   v0 = lookup '__lambda0
-  v1 = call v0 (42)
+  v1 = call v0 (42) (SchemeNumType())
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1141,7 +1143,7 @@ bb0:
   v1 = arity v0
   v2 = Binop.NUM_EQ v1 2
   brn v2 wrong_arity
-  v3 = call v0 (42, 43)
+  v3 = call v0 (42, 43) (SchemeNumType(), SchemeNumType())
   return v3
 
 wrong_arity:
@@ -1177,7 +1179,7 @@ bb0:
   v1 = arity v0
   v2 = Binop.NUM_EQ v1 1
   brn v2 wrong_arity
-  v3 = call v0 (42)
+  v3 = call v0 (42) (SchemeNumType())
   return v3
 
 wrong_arity:
@@ -1195,7 +1197,7 @@ wrong_arity:
 function (? ) entry=bb0
 bb0:
   v0 = lookup '+
-  v1 = call v0 (3, 4)
+  v1 = call v0 (3, 4) (SchemeNumType(), SchemeNumType())
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1213,7 +1215,7 @@ bb0:
   v1 = arity v0
   v2 = Binop.NUM_EQ v1 2
   brn v2 wrong_arity
-  v3 = call v0 (3, 4)
+  v3 = call v0 (3, 4) (SchemeNumType(), SchemeNumType())
   return v3
 
 wrong_arity:
@@ -1235,7 +1237,7 @@ bb0:
   v1 = arity v0
   v2 = Binop.NUM_EQ v1 1
   brn v2 wrong_arity
-  v3 = call v0 (42)
+  v3 = call v0 (42) (SchemeNumType())
   return v3
 
 wrong_arity:
@@ -1278,7 +1280,7 @@ bb0:
 function (? egg) entry=bb0
 bb0:
   v0 = lookup '+
-  v1 = call v0 (egg, 1)
+  v1 = call v0 (egg, 1) (SchemeNumType(), SchemeNumType())
   egg = v1
   jmp bb0
   return 0
@@ -1302,7 +1304,7 @@ bb0:
 function (? egg) entry=bb0
 bb0:
   v0 = lookup 'spam
-  v1 = call v0 ('True)
+  v1 = call v0 ('True) (SchemeBoolType())
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1355,8 +1357,8 @@ function (? func) entry=bb0
 bb0:
   v0 = lookup 'assert
   v1 = lookup 'function?
-  v2 = call v1 (func)
-  v3 = call v0 (v2)
+  v2 = call v1 (func) (SchemeObjectType())
+  v3 = call v0 (v2) (SchemeBoolType())
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1441,8 +1443,8 @@ function (? egg) entry=bb0
 bb0:
   v0 = lookup 'assert
   v1 = lookup 'vector?
-  v2 = call v1 (egg)
-  v3 = call v0 (v2)
+  v2 = call v1 (egg) (SchemeObjectType())
+  v3 = call v0 (v2) (SchemeBoolType())
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())

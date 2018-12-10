@@ -275,12 +275,12 @@ class ExpressionEmitter(Visitor):
         is_known_function = self._is_known_function(call)
         arity_known_correct = self._arity_known_correct(
             call, is_known_function, tail_call_data)
-        call_args_compatible = self._call_args_compatible(
+        tail_call_args_compatible = self._tail_call_args_compatible(
             call, arity_known_correct, tail_call_data)
 
         func_to_call = self._get_func_to_call(
             call, is_known_function,
-            arity_known_correct, tail_call_data, call_args_compatible)
+            arity_known_correct, tail_call_data, tail_call_args_compatible)
 
         args = self._emit_args(call)
 
@@ -301,7 +301,8 @@ class ExpressionEmitter(Visitor):
             assert func_to_call is not None
             call_result_var = bytecode.Var(next(self.var_names))
             call_instr = bytecode.CallInst(
-                call_result_var, func_to_call, args)
+                call_result_var, func_to_call, args,
+                specialization=self._get_arg_types(call))
 
             self.end_block.add_inst(call_instr)
             self.result = call_result_var
@@ -335,9 +336,10 @@ class ExpressionEmitter(Visitor):
 
         return False
 
-    def _call_args_compatible(self, call: sexp.SCall,
-                              arity_known_correct: bool,
-                              tail_call_data: Optional[TailCallData]) -> bool:
+    def _tail_call_args_compatible(
+            self, call: sexp.SCall,
+            arity_known_correct: bool,
+            tail_call_data: Optional[TailCallData]) -> bool:
         if (self._expr_types is None
                 or tail_call_data is None or not arity_known_correct):
             return False
@@ -349,6 +351,14 @@ class ExpressionEmitter(Visitor):
                 return False
 
         return True
+
+    def _get_arg_types(
+            self, call: sexp.SCall) -> Optional[scheme_types.TypeTuple]:
+        if self._expr_types is None:
+            return None
+
+        return tuple(
+            (self._expr_types.get_expr_type(arg) for arg in call.args))
 
     def _get_func_to_call(self, call: sexp.SCall,
                           is_known_function: bool,
