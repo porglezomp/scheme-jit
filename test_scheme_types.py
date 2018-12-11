@@ -360,3 +360,19 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
             scheme_types.SchemeVectType(None),
         ]
         self.assertEqual(expected, types)
+
+    def test_analyze_lambda_body(self) -> None:
+        prog = sexp.parse("(lambda (spam) (number? spam))")
+
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            scheme_types.SchemeObject,
+            scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
+            scheme_types.SchemeObject,
+            scheme_types.SchemeBool,
+            scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
+        ]
+        self.assertEqual(expected, types)

@@ -155,6 +155,9 @@ class FunctionTypeAnalyzer(Visitor):
 
         self._function_type: Optional[SchemeFunctionType] = None
 
+        # Keep track of whether we've hit a lambda
+        self._inside_function = False
+
     def get_function_type(self) -> SchemeFunctionType:
         assert self._function_type is not None
         return self._function_type
@@ -172,10 +175,11 @@ class FunctionTypeAnalyzer(Visitor):
         return SExpWrapper(expr) in self._expr_types
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
-        if func.is_lambda:
+        if self._inside_function:
             self._set_expr_type(func, SchemeFunctionType(len(func.params)))
             # Lambda bodies will be analyzed separately when they're called
         else:
+            self._inside_function = True
             for param in func.params:
                 super().visit(param)
             super().visit(func.body)

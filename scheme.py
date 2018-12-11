@@ -19,7 +19,8 @@ def main() -> None:
 
     env = bytecode.EvalEnv(optimize_tail_calls=args.optimize_tail_calls,
                            naive_jit=args.naive_jit,
-                           bytecode_jit=args.bytecode_jit)
+                           bytecode_jit=args.bytecode_jit,
+                           print_specializations=args.print_specializations)
     runner.add_intrinsics(env)
     runner.add_builtins(env)
     runner.add_prelude(env)
@@ -59,6 +60,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--bytecode_jit', '-b', action='store_true', default=False
     )
+
+    parser.add_argument('--print_specializations', '-p',
+                        action='store_true', default=False)
 
     return parser.parse_args()
 

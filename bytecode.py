@@ -98,15 +98,13 @@ class EvalEnv:
     _global_env: Dict[SSym, Value]
     stats: Stats
 
-    optimize_tail_calls: bool = False
-    naive_jit: bool = False
-
     def __init__(self,
                  local_env: Optional[Dict[Var, Value]] = None,
                  global_env: Optional[Dict[SSym, Value]] = None,
                  optimize_tail_calls: bool = False,
                  naive_jit: bool = False,
-                 bytecode_jit: bool = False):
+                 bytecode_jit: bool = False,
+                 print_specializations: bool = False):
         if local_env is None:
             self._local_env = {}
         else:
@@ -120,6 +118,7 @@ class EvalEnv:
         self.optimize_tail_calls = optimize_tail_calls
         self.naive_jit = naive_jit
         self.bytecode_jit = bytecode_jit
+        self.print_specializations = print_specializations
 
     def copy(self) -> EvalEnv:
         """Return a shallow copy of the environment."""
@@ -127,7 +126,8 @@ class EvalEnv:
             self._local_env.copy(),
             self._global_env,
             naive_jit=self.naive_jit,
-            bytecode_jit=self.bytecode_jit)
+            bytecode_jit=self.bytecode_jit,
+            print_specializations=self.print_specializations)
         env.stats = self.stats
         return env
 
@@ -391,6 +391,8 @@ class CallInst(Inst):
                                  func_code: Function,
                                  type_tuple: TypeTuple) -> None:
         if env.naive_jit:
+            if env.print_specializations:
+                print('Specializing:', func.name, type_tuple)
             param_types = dict(zip(func.params, type_tuple))
             type_analyzer = scheme_types.FunctionTypeAnalyzer(
                 param_types, env._global_env)
