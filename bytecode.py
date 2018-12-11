@@ -120,10 +120,9 @@ class EvalEnv:
         self.bytecode_jit = bytecode_jit
         self.print_specializations = print_specializations
 
-    def copy(self) -> EvalEnv:
-        """Return a shallow copy of the environment."""
+    def new_local(self) -> EvalEnv:
         env = EvalEnv(
-            self._local_env.copy(),
+            {},
             self._global_env,
             naive_jit=self.naive_jit,
             bytecode_jit=self.bytecode_jit,
@@ -370,7 +369,7 @@ class CallInst(Inst):
                 and func.calls[type_tuple] > 1):
             self._generate_specialization(env, func, func_code, type_tuple)
 
-        func_env = env.copy()
+        func_env = env.new_local()
         assert len(func_code.params) == len(self.args)
         func_env._local_env = {
             name: env[arg] for name, arg in zip(func_code.params, self.args)
@@ -558,7 +557,6 @@ class BasicBlock(BB):
                 yield from inst.run_call(env)
             else:
                 next_bb = inst.run(env)
-            yield env.copy()
             if next_bb is not None:
                 env.stats.taken_count[id(inst)] += 1
                 break
