@@ -6,7 +6,8 @@ from typing import DefaultDict, Dict, Iterator, List, Optional, Set, Tuple
 import bytecode
 from bytecode import (BasicBlock, BoolLit, BrInst, BrnInst, CallInst, CopyInst,
                       EvalEnv, FuncLit, Function, JmpInst, LookupInst,
-                      ReturnInst, SymLit, TypeMap, TypeTuple, ValueMap, Var)
+                      ReturnInst, SymLit, TrapInst, TypeMap, TypeTuple,
+                      ValueMap, Var)
 from scheme_types import SchemeObjectType
 from sexp import SBool, SFunction, SSym, Value
 
@@ -149,6 +150,8 @@ class FunctionOptimizer:
                         block.instructions[i] = JmpInst(inst.target)
                     elif inst.cond == BoolLit(SBool(not will_jump)):
                         block.instructions.pop(i)
+                elif isinstance(inst, JmpInst) or isinstance(inst, TrapInst):
+                    block.instructions = block.instructions[:i+1]
                 elif inst.pure():
                     if not any(self.is_used(x, block) for x in inst.dests()):
                         # Its result is read nowhere, it can be deleted.
@@ -269,4 +272,5 @@ class FunctionOptimizer:
         self.compute_dataflow()
         self.apply_constant_info()
         self.remove_dead_code()
+        self.merge_blocks()
         self.legalize()
