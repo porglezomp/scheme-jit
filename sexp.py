@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import (TYPE_CHECKING, Dict, Iterator, List, Optional, Sequence,
                     Tuple, Union, cast)
 
+import bytecode
 import scheme_types
 
 if TYPE_CHECKING:
@@ -32,6 +33,10 @@ class Value(SExp):
     def scheme_type(self) -> scheme_types.SchemeObjectType:
         ...
 
+    @abstractmethod
+    def to_param(self) -> Optional[bytecode.Parameter]:
+        ...
+
 
 @dataclass(frozen=True, order=True)
 class SNum(Value):
@@ -50,6 +55,9 @@ class SNum(Value):
     def scheme_type(self) -> scheme_types.SchemeNumType:
         return scheme_types.SchemeNum
 
+    def to_param(self) -> bytecode.NumLit:
+        return bytecode.NumLit(self)
+
 
 @dataclass(frozen=True)
 class SBool(Value):
@@ -64,6 +72,9 @@ class SBool(Value):
 
     def scheme_type(self) -> scheme_types.SchemeBoolType:
         return scheme_types.SchemeBool
+
+    def to_param(self) -> bytecode.BoolLit:
+        return bytecode.BoolLit(self)
 
 
 @dataclass(frozen=True)
@@ -82,6 +93,9 @@ class SSym(Value):
 
     def scheme_type(self) -> scheme_types.SchemeSymType:
         return scheme_types.SchemeSym
+
+    def to_param(self) -> bytecode.SymLit:
+        return bytecode.SymLit(self)
 
 
 @dataclass(frozen=True)
@@ -108,6 +122,9 @@ class SVect(Value):
 
     def scheme_type(self) -> scheme_types.SchemeVectType:
         return scheme_types.SchemeVectType(len(self.items))
+
+    def to_param(self) -> Optional[bytecode.Parameter]:
+        return None
 
 
 @dataclass(frozen=True)
@@ -247,6 +264,9 @@ class SFunction(Value):
     def __str__(self) -> str:
         params = ''.join(' ' + p.name for p in self.params)
         return f"<function ({self.name}{params}) at {id(self):x}>"
+
+    def to_param(self) -> bytecode.FuncLit:
+        return bytecode.FuncLit(self)
 
 
 @dataclass(frozen=True)

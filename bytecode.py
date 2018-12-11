@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -67,6 +68,19 @@ class ValueMap:
                     result[key] = self[key]
         return result
 
+    def get_param(
+            self, key: Parameter, allow_func: bool = False,
+    ) ->Parameter:
+        value = self[key]
+        if value is None:
+            return key
+        param = value.to_param()
+        if param is None:
+            return key
+        if not allow_func and isinstance(param, FuncLit):
+            return key
+        return param
+
 
 class Parameter(ABC):
     @abstractmethod
@@ -97,6 +111,10 @@ class Inst(ABC):
 
     @abstractmethod
     def freshen(self, prefix: str) -> None:
+        ...
+
+    @abstractmethod
+    def constant_fold(self, values: ValueMap) -> Inst:
         ...
 
 
@@ -388,6 +406,11 @@ class BinopInst(Inst):
         self.lhs = self.lhs.freshen(prefix)
         self.rhs = self.rhs.freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> BinopInst:
+        return BinopInst(self.dest, self.op,
+                         values.get_param(self.lhs),
+                         values.get_param(self.rhs))
+
 
 @dataclass
 class TypeofInst(Inst):
@@ -412,6 +435,9 @@ class TypeofInst(Inst):
         self.dest = self.dest.freshen(prefix)
         self.value = self.value.freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> TypeofInst:
+        return TypeofInst(self.dest, values.get_param(self.value))
+
 
 @dataclass
 class CopyInst(Inst):
@@ -431,6 +457,9 @@ class CopyInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.dest = self.dest.freshen(prefix)
         self.value = self.value.freshen(prefix)
+
+    def constant_fold(self, values: ValueMap) -> CopyInst:
+        return CopyInst(self.dest, values.get_param(self.value))
 
 
 @dataclass
@@ -457,6 +486,9 @@ class LookupInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.dest = self.dest.freshen(prefix)
         self.name = self.name.freshen(prefix)
+
+    def constant_fold(self, values: ValueMap) -> LookupInst:
+        return LookupInst(self.dest, values.get_param(self.name))
 
 
 @dataclass
@@ -487,6 +519,9 @@ class AllocInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.dest = self.dest.freshen(prefix)
         self.size = self.size.freshen(prefix)
+
+    def constant_fold(self, values: ValueMap) -> AllocInst:
+        return AllocInst(self.dest, values.get_param(self.size))
 
 
 @dataclass
@@ -529,6 +564,11 @@ class LoadInst(Inst):
         self.addr = self.addr.freshen(prefix)
         self.offset = self.offset.freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> LoadInst:
+        return LoadInst(self.dest,
+                        values.get_param(self.addr),
+                        values.get_param(self.offset))
+
 
 @dataclass
 class StoreInst(Inst):
@@ -565,6 +605,11 @@ class StoreInst(Inst):
         self.offset = self.offset.freshen(prefix)
         self.value = self.value.freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> StoreInst:
+        return StoreInst(self.addr,
+                         values.get_param(self.offset),
+                         values.get_param(self.value))
+
 
 @dataclass
 class LengthInst(Inst):
@@ -596,6 +641,9 @@ class LengthInst(Inst):
         self.dest = self.dest.freshen(prefix)
         self.addr = self.addr.freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> LengthInst:
+        return copy.copy(self)
+
 
 @dataclass
 class ArityInst(Inst):
@@ -621,6 +669,9 @@ class ArityInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.dest = self.dest.freshen(prefix)
         self.func = self.func.freshen(prefix)
+
+    def constant_fold(self, values: ValueMap) -> ArityInst:
+        return ArityInst(self.dest, values.get_param(self.func))
 
 
 @dataclass
@@ -676,6 +727,13 @@ class CallInst(Inst):
         for i in range(len(self.args)):
             self.args[i] = self.args[i].freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> CallInst:
+        # @TODO: Improve the specialization
+        return CallInst(self.dest,
+                        values.get_param(self.func, allow_func=True),
+                        [values.get_param(arg) for arg in self.args],
+                        self.specialization)
+
 
 @dataclass
 class JmpInst(Inst):
@@ -698,6 +756,9 @@ class JmpInst(Inst):
 
     def freshen(self, prefix: str) -> None:
         pass
+
+    def constant_fold(self, values: ValueMap) -> JmpInst:
+        return copy.copy(self)
 
 
 @dataclass
@@ -727,6 +788,9 @@ class BrInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.cond = self.cond.freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> BrInst:
+        return BrInst(values.get_param(self.cond), self.target)
+
 
 @dataclass
 class BrnInst(Inst):
@@ -755,6 +819,9 @@ class BrnInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.cond = self.cond.freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> BrnInst:
+        return BrnInst(values.get_param(self.cond), self.target)
+
 
 @dataclass
 class ReturnInst(Inst):
@@ -771,6 +838,9 @@ class ReturnInst(Inst):
 
     def freshen(self, prefix: str) -> None:
         self.ret = self.ret.freshen(prefix)
+
+    def constant_fold(self, values: ValueMap) -> ReturnInst:
+        return ReturnInst(values.get_param(self.ret))
 
 
 @dataclass
@@ -789,6 +859,9 @@ class TrapInst(Inst):
     def freshen(self, prefix: str) -> None:
         pass
 
+    def constant_fold(self, values: ValueMap) -> TrapInst:
+        return copy.copy(self)
+
 
 @dataclass
 class TraceInst(Inst):
@@ -806,6 +879,9 @@ class TraceInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.value = self.value.freshen(prefix)
 
+    def constant_fold(self, values: ValueMap) -> TraceInst:
+        return TraceInst(values.get_param(self.value))
+
 
 @dataclass
 class BreakpointInst(Inst):
@@ -820,6 +896,9 @@ class BreakpointInst(Inst):
 
     def freshen(self, prefix: str) -> None:
         pass
+
+    def constant_fold(self, values: ValueMap) -> BreakpointInst:
+        return copy.copy(self)
 
 
 @dataclass

@@ -116,6 +116,16 @@ class FunctionOptimizer:
             types, values = self.block_input_maps(block)
             self.info[id(block)] = self.block_transfer(block, types, values)
 
+    def apply_constant_info(self) -> None:
+        if not self.info:
+            self.compute_dataflow()
+        assert self.info
+        for block in self.func.blocks():
+            info_map = self.info[id(block)]
+            for i, inst in enumerate(block.instructions):
+                _, values = info_map[i]
+                block.instructions[i] = inst.constant_fold(values)
+
     def find_lookups(self) -> Iterator[Tuple[BasicBlock, int, LookupInst]]:
         for block in self.func.blocks():
             for i, inst in enumerate(block.instructions):
