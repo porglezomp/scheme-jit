@@ -28,6 +28,14 @@ class TailCallFinderTestCase(unittest.TestCase):
         self.assert_symbol_in_tail_calls(
             sexp.SSym('vacuous-tail'), self.finder.tail_calls)
 
+    def test_tail_call_in_begin(self) -> None:
+        prog = sexp.parse(
+            '(define (vacuous-tail) (begin 42 43 (vacuous-tail)))')
+        self.finder.visit(prog)
+        self.assertEqual(1, len(self.finder.tail_calls))
+        self.assert_symbol_in_tail_calls(
+            sexp.SSym('vacuous-tail'), self.finder.tail_calls)
+
     def test_tail_call_in_conditional_else(self) -> None:
         prog = sexp.parse(
             '(define (vacuous-tail) (if true false (vacuous-tail)))')

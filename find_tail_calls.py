@@ -59,3 +59,7 @@ class TailCallFinder(Visitor):
             TailCallData(call,
                          list(self._current_function.params),
                          self._current_function))
+
+    def visit_SBegin(self, begin: sexp.SBegin) -> None:
+        if len(begin.exprs) != 0:
+            self.visit(begin.exprs[-1])

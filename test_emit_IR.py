@@ -739,6 +739,50 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         assert isinstance(actual_lambda, sexp.SFunction)
         self.assertEqual(expected_lambda, actual_lambda.code)
 
+    def test_emit_begin_in_func(self) -> None:
+        self.maxDiff = None
+        prog = sexp.parse('(define (spam) (begin (trace 42) (trace 43) 44))')
+        self.function_emitter.visit(prog)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'trace
+  v1 = typeof v0
+  v2 = Binop.SYM_EQ v1 'function
+  brn v2 non_function
+  v3 = arity v0
+  v4 = Binop.NUM_EQ v3 1
+  brn v4 wrong_arity
+  v5 = call v0 (42)
+  v6 = lookup 'trace
+  v7 = typeof v6
+  v8 = Binop.SYM_EQ v7 'function
+  brn v8 non_function
+  v9 = arity v6
+  v10 = Binop.NUM_EQ v9 1
+  brn v10 wrong_arity
+  v11 = call v6 (43)
+  return 44
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
+
+        '''
+
+        self.assertEqual(
+            expected.strip(),
+            str(self.function_emitter.get_emitted_func()).strip())
+
 
 class EmitOptimizedFuncTestCase(unittest.TestCase):
     env: bytecode.EvalEnv
