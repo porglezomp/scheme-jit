@@ -144,13 +144,13 @@ class FunctionOptimizer:
         for block in self.func.blocks():
             for i in reversed(range(len(block.instructions))):
                 inst = block.instructions[i]
-                if isinstance(inst, BrInst) or isinstance(inst, BrnInst):
+                if isinstance(inst, (BrInst, BrnInst)):
                     will_jump = isinstance(inst, BrInst)
                     if inst.cond == BoolLit(SBool(will_jump)):
                         block.instructions[i] = JmpInst(inst.target)
                     elif inst.cond == BoolLit(SBool(not will_jump)):
                         block.instructions.pop(i)
-                elif isinstance(inst, JmpInst) or isinstance(inst, TrapInst):
+                elif isinstance(inst, (JmpInst, TrapInst)):
                     block.instructions = block.instructions[:i+1]
                 elif inst.pure():
                     if not any(self.is_used(x, block) for x in inst.dests()):
@@ -238,17 +238,38 @@ class FunctionOptimizer:
     def merge_blocks(self) -> None:
         if self.preds is None:
             self.compute_preds()
-        assert self.preds
-        # @TODO: Branch switching for conditional+unconditional jumps
-        # It would be nice to be able to use the better one of the two tails
-        for block in self.func.blocks():
+            assert self.preds
+
+        def mergable(block: BasicBlock) -> bool:
+            # @TODO: Branch switching for conditional+unconditional jumps.
+            # It would be nice to be able to use the better one of the two
+            # tails.
+            assert self.preds
             last = block.instructions[-1]
-            while (isinstance(last, JmpInst)
-                   and len(self.preds[id(last.target)]) == 1):
+            if isinstance(last, JmpInst):
+                return len(self.preds[id(last.target)]) == 1
+            elif isinstance(last, TrapInst) and len(block.instructions) > 1:
+                prev = block.instructions[-2]
+                if isinstance(prev, (BrInst, BrnInst)):
+                    if not len(self.preds[id(prev.target)]) == 1:
+                        return False
+                    new_target = block.split_after(-2)
+                    block.instructions[-1] = JmpInst(prev.target)
+                    if isinstance(prev, BrInst):
+                        block.instructions[-2] = BrnInst(prev.cond, new_target)
+                    else:
+                        block.instructions[-2] = BrInst(prev.cond, new_target)
+                    return True
+            return False
+
+        for block in self.func.blocks():
+            while mergable(block):
+                last = block.instructions[-1]
+                assert isinstance(last, JmpInst)
                 block.instructions.pop()
                 block.instructions.extend(last.target.instructions)
                 del self.preds[id(last.target)]
-                last = block.instructions[-1]
+
         # @TODO: Repair dataflow info instead of invalidating it all?
         self.info = None
 

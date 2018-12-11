@@ -215,7 +215,7 @@ inl0@bb1:
         assert func.code
 
         opt = FunctionOptimizer(func.code)
-        opt.specialization = (SchemeNum, SchemeNum)
+        # opt.specialization = (SchemeNum, SchemeNum)
         opt.optimize(env)
 
         print(func.code)
