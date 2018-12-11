@@ -61,5 +61,5 @@ class TailCallFinder(Visitor):
                          self._current_function))
 
     def visit_SBegin(self, begin: sexp.SBegin) -> None:
-        if len(begin.exprs) != 0:
-            self.visit(begin.exprs[-1])
+        assert len(begin.exprs) != 0, 'begin bodies must not be empty'
+        self.visit(begin.exprs[-1])

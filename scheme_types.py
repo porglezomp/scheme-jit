@@ -174,6 +174,11 @@ class FunctionTypeAnalyzer(Visitor):
     def expr_type_known(self, expr: sexp.SExp) -> bool:
         return SExpWrapper(expr) in self._expr_types
 
+    def visit_SBegin(self, begin: sexp.SBegin) -> None:
+        assert len(begin.exprs) != 0, 'begin bodies must not be empty'
+        super().visit_SBegin(begin)
+        self._set_expr_type(begin, self.get_expr_type(begin.exprs[-1]))
+
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         if self._inside_function:
             self._set_expr_type(func, SchemeFunctionType(len(func.params)))
