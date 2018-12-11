@@ -4,11 +4,11 @@ from typing import DefaultDict, Tuple
 import bytecode
 import runner
 import sexp
-from bytecode import (BasicBlock, Binop, Function, NumLit, SymLit, TypeMap,
-                      ValueMap, Var)
+from bytecode import (BasicBlock, Binop, FuncLit, Function, NumLit, SymLit,
+                      TypeMap, ValueMap, Var)
 from optimization import FunctionOptimizer
 from scheme_types import SchemeNum, SchemeObject, SchemeSym
-from sexp import SNum, SSym
+from sexp import SFunction, SNum, SSym
 
 
 def make_func() -> Function:
@@ -207,3 +207,29 @@ inl0@bb1:
                 (TypeMap({Var('v0'): SchemeObject}), ValueMap()),
             ],
         })
+
+    def test_optimize_plus(self) -> None:
+        env = get_builtins()
+        plus_func = env._global_env[SSym('+')]
+        assert isinstance(plus_func, sexp.SFunction)
+        plus = plus_func.code
+        assert plus
+
+        opt = FunctionOptimizer(plus)
+        opt.specialization = (SchemeNum, SchemeNum)
+
+        for b, i, l in opt.find_lookups():
+            print(b.name, i, l)
+            if isinstance(l.name, SymLit) and opt.should_inline(l.name.value):
+                func = env._global_env.get(l.name.value, None)
+                if func is None:
+                    print("Failed to inline {l.name.value}!")
+                    continue
+                assert isinstance(func, SFunction)
+                b.instructions[i] = bytecode.CopyInst(l.dest, FuncLit(func))
+
+        opt.compute_dataflow()
+        opt.apply_constant_info()
+        opt.remove_dead_code()
+
+        print(plus)

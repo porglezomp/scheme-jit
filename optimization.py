@@ -4,10 +4,10 @@ from queue import Queue
 from typing import DefaultDict, Dict, Iterator, List, Optional, Set, Tuple
 
 import bytecode
-from bytecode import (BasicBlock, CallInst, Function, LookupInst, TypeMap,
-                      TypeTuple, ValueMap, Var)
+from bytecode import (BasicBlock, BoolLit, BrInst, BrnInst, CallInst, Function,
+                      JmpInst, LookupInst, TypeMap, TypeTuple, ValueMap, Var)
 from scheme_types import SchemeObjectType
-from sexp import SSym, Value
+from sexp import SBool, SSym, Value
 
 Id = int
 Edge = Tuple[BasicBlock, int, BasicBlock]
@@ -137,6 +137,33 @@ class FunctionOptimizer:
             for i, inst in enumerate(block.instructions):
                 if isinstance(inst, CallInst):
                     yield block, i, inst
+
+    def remove_dead_code(self) -> None:
+        for block in self.func.blocks():
+            for i in reversed(range(len(block.instructions))):
+                inst = block.instructions[i]
+                if isinstance(inst, BrInst) or isinstance(inst, BrnInst):
+                    will_jump = isinstance(inst, BrInst)
+                    if inst.cond == BoolLit(SBool(will_jump)):
+                        block.instructions[i] = JmpInst(inst.target)
+                    elif inst.cond == BoolLit(SBool(not will_jump)):
+                        block.instructions.pop(i)
+                elif inst.pure():
+                    if not any(self.is_used(x, block) for x in inst.dests()):
+                        # Its result is read nowhere, it can be deleted.
+                        block.instructions.pop(i)
+
+    def is_used(self, var: Var, block: Optional[BasicBlock] = None) -> bool:
+        # Check `block` first, things are more likely to be used locally.
+        if block is not None:
+            for inst in block.instructions:
+                if var in inst.params():
+                    return True
+        for block in self.func.blocks():
+            for inst in block.instructions:
+                if var in inst.params():
+                    return True
+        return False
 
     def mark_vars(self, func: Function) -> Function:
         func = copy.deepcopy(func)

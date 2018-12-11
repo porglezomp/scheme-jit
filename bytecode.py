@@ -117,6 +117,18 @@ class Inst(ABC):
     def constant_fold(self, values: ValueMap) -> Inst:
         ...
 
+    @abstractmethod
+    def dests(self) -> List[Var]:
+        ...
+
+    @abstractmethod
+    def params(self) -> List[Parameter]:
+        ...
+
+    @abstractmethod
+    def pure(self) -> bool:
+        ...
+
 
 class BB(ABC):
     name: str
@@ -411,6 +423,15 @@ class BinopInst(Inst):
                          values.get_param(self.lhs),
                          values.get_param(self.rhs))
 
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.lhs, self.rhs]
+
+    def pure(self) -> bool:
+        return self.op not in (Binop.DIV, Binop.MOD)
+
 
 @dataclass
 class TypeofInst(Inst):
@@ -438,6 +459,15 @@ class TypeofInst(Inst):
     def constant_fold(self, values: ValueMap) -> TypeofInst:
         return TypeofInst(self.dest, values.get_param(self.value))
 
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.value]
+
+    def pure(self) -> bool:
+        return True
+
 
 @dataclass
 class CopyInst(Inst):
@@ -460,6 +490,15 @@ class CopyInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> CopyInst:
         return CopyInst(self.dest, values.get_param(self.value))
+
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.value]
+
+    def pure(self) -> bool:
+        return True
 
 
 @dataclass
@@ -489,6 +528,15 @@ class LookupInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> LookupInst:
         return LookupInst(self.dest, values.get_param(self.name))
+
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.name]
+
+    def pure(self) -> bool:
+        return True
 
 
 @dataclass
@@ -522,6 +570,15 @@ class AllocInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> AllocInst:
         return AllocInst(self.dest, values.get_param(self.size))
+
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.size]
+
+    def pure(self) -> bool:
+        return True
 
 
 @dataclass
@@ -569,6 +626,15 @@ class LoadInst(Inst):
                         values.get_param(self.addr),
                         values.get_param(self.offset))
 
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.addr, self.offset]
+
+    def pure(self) -> bool:
+        return True
+
 
 @dataclass
 class StoreInst(Inst):
@@ -610,6 +676,15 @@ class StoreInst(Inst):
                          values.get_param(self.offset),
                          values.get_param(self.value))
 
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return [self.addr, self.offset, self.value]
+
+    def pure(self) -> bool:
+        return False
+
 
 @dataclass
 class LengthInst(Inst):
@@ -644,6 +719,15 @@ class LengthInst(Inst):
     def constant_fold(self, values: ValueMap) -> LengthInst:
         return copy.copy(self)
 
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.addr]
+
+    def pure(self) -> bool:
+        return True
+
 
 @dataclass
 class ArityInst(Inst):
@@ -672,6 +756,15 @@ class ArityInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> ArityInst:
         return ArityInst(self.dest, values.get_param(self.func))
+
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.func]
+
+    def pure(self) -> bool:
+        return True
 
 
 @dataclass
@@ -734,6 +827,15 @@ class CallInst(Inst):
                         [values.get_param(arg) for arg in self.args],
                         self.specialization)
 
+    def dests(self) -> List[Var]:
+        return [self.dest]
+
+    def params(self) -> List[Parameter]:
+        return [self.func] + self.args
+
+    def pure(self) -> bool:
+        return False
+
 
 @dataclass
 class JmpInst(Inst):
@@ -759,6 +861,15 @@ class JmpInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> JmpInst:
         return copy.copy(self)
+
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return []
+
+    def pure(self) -> bool:
+        return False
 
 
 @dataclass
@@ -791,6 +902,15 @@ class BrInst(Inst):
     def constant_fold(self, values: ValueMap) -> BrInst:
         return BrInst(values.get_param(self.cond), self.target)
 
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return [self.cond]
+
+    def pure(self) -> bool:
+        return False
+
 
 @dataclass
 class BrnInst(Inst):
@@ -822,6 +942,15 @@ class BrnInst(Inst):
     def constant_fold(self, values: ValueMap) -> BrnInst:
         return BrnInst(values.get_param(self.cond), self.target)
 
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return [self.cond]
+
+    def pure(self) -> bool:
+        return False
+
 
 @dataclass
 class ReturnInst(Inst):
@@ -841,6 +970,15 @@ class ReturnInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> ReturnInst:
         return ReturnInst(values.get_param(self.ret))
+
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return [self.ret]
+
+    def pure(self) -> bool:
+        return False
 
 
 @dataclass
@@ -862,6 +1000,15 @@ class TrapInst(Inst):
     def constant_fold(self, values: ValueMap) -> TrapInst:
         return copy.copy(self)
 
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return []
+
+    def pure(self) -> bool:
+        return False
+
 
 @dataclass
 class TraceInst(Inst):
@@ -882,6 +1029,15 @@ class TraceInst(Inst):
     def constant_fold(self, values: ValueMap) -> TraceInst:
         return TraceInst(values.get_param(self.value))
 
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return [self.value]
+
+    def pure(self) -> bool:
+        return False
+
 
 @dataclass
 class BreakpointInst(Inst):
@@ -899,6 +1055,15 @@ class BreakpointInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> BreakpointInst:
         return copy.copy(self)
+
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return []
+
+    def pure(self) -> bool:
+        return False
 
 
 @dataclass
