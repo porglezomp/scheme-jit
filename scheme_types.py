@@ -176,6 +176,9 @@ class FunctionTypeAnalyzer(Visitor):
 
         self._function_type: Optional[SchemeFunctionType] = None
 
+        # Keep track of whether we've hit a lambda
+        self._inside_function = False
+
     def get_function_type(self) -> SchemeFunctionType:
         assert self._function_type is not None
         return self._function_type
@@ -204,11 +207,17 @@ class FunctionTypeAnalyzer(Visitor):
     def set_expr_value(self, expr: sexp.SExp, value: sexp.Value) -> None:
         self._expr_values[SExpWrapper(expr)] = value
 
+    def visit_SBegin(self, begin: sexp.SBegin) -> None:
+        assert len(begin.exprs) != 0, 'begin bodies must not be empty'
+        super().visit_SBegin(begin)
+        self.set_expr_type(begin, self.get_expr_type(begin.exprs[-1]))
+
     def visit_SFunction(self, func: sexp.SFunction) -> None:
-        if func.is_lambda:
+        if self._inside_function:
             self.set_expr_type(func, SchemeFunctionType(len(func.params)))
             # Lambda bodies will be analyzed separately when they're called
         else:
+            self._inside_function = True
             for param in func.params:
                 super().visit(param)
             super().visit(func.body)

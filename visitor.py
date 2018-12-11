@@ -1,7 +1,7 @@
 from typing import List, Union
 
-from sexp import (Nil, Quote, SBool, SCall, SConditional, SExp, SFunction,
-                  SNum, SPair, SSym, SVect)
+from sexp import (Nil, Quote, SBegin, SBool, SCall, SConditional, SExp,
+                  SFunction, SNum, SPair, SSym, SVect)
 
 
 class Visitor:
@@ -15,24 +15,7 @@ class Visitor:
             self.visit_SExp(expr)
 
     def visit_SExp(self, expr: SExp) -> None:
-        if isinstance(expr, SNum):
-            self.visit_SNum(expr)
-        elif isinstance(expr, SBool):
-            self.visit_SBool(expr)
-        elif isinstance(expr, SSym):
-            self.visit_SSym(expr)
-        elif isinstance(expr, SVect):
-            self.visit_SVect(expr)
-        elif isinstance(expr, SPair):
-            self.visit_SPair(expr)
-        elif isinstance(expr, Quote):
-            self.visit_Quote(expr)
-        elif isinstance(expr, SFunction):
-            self.visit_SFunction(expr)
-        elif isinstance(expr, SCall):
-            self.visit_SCall(expr)
-        elif isinstance(expr, SConditional):
-            self.visit_SConditional(expr)
+        getattr(self, f'visit_{type(expr).__name__}')(expr)
 
     def visit_SNum(self, num: SNum) -> None:
         pass
@@ -54,6 +37,10 @@ class Visitor:
 
     def visit_Quote(self, quote: Quote) -> None:
         self.visit(quote.expr)
+
+    def visit_SBegin(self, begin: SBegin) -> None:
+        for expr in begin.exprs:
+            self.visit(expr)
 
     def visit_SFunction(self, func: SFunction) -> None:
         if not func.is_lambda:

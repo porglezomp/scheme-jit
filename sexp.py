@@ -253,6 +253,11 @@ class SConditional(SExp):
     else_expr: SExp
 
 
+@dataclass(frozen=True)
+class SBegin(SExp):
+    exprs: List[SExp]
+
+
 def parse(x: str) -> List[SExp]:
     # Remove line comments. Since we don't have string literals,
     # we don't need fancier than this!
@@ -298,6 +303,10 @@ def parse(x: str) -> List[SExp]:
             parsed_first, tokens = parse(tokens)
             if parsed_first == SSym('if'):
                 return parse_conditional(tokens)
+
+            if parsed_first == SSym('begin'):
+                body, tokens = read_list_tail(tokens)
+                return SBegin(list(body)), tokens[1:]
 
             if parsed_first == SSym('define'):
                 return parse_define(tokens)

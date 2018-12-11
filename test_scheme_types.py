@@ -419,6 +419,36 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         ]
         self.assertEqual(expected, types)
 
+    def test_analyze_lambda_body(self) -> None:
+        prog = sexp.parse("(lambda (spam) (number? spam))")
+
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            scheme_types.SchemeObject,
+            scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
+            scheme_types.SchemeObject,
+            scheme_types.SchemeBool,
+            scheme_types.SchemeFunctionType(1, scheme_types.SchemeBool),
+        ]
+        self.assertEqual(expected, types)
+
+    def test_analyze_begin(self) -> None:
+        prog = sexp.parse("(begin 42 true)")
+
+        analyzer = FunctionTypeAnalyzer({}, {})
+        analyzer.visit(prog)
+
+        types = list(analyzer.get_expr_types().values())
+        expected = [
+            scheme_types.SchemeNum,
+            scheme_types.SchemeBool,
+            scheme_types.SchemeBool
+        ]
+        self.assertEqual(expected, types)
+
 
 class ConstExprTestCase(unittest.TestCase):
     def test_typeof_object(self) -> None:
