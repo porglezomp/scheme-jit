@@ -82,9 +82,9 @@ bb1:
         self.assertEqual(str(func), '''function (?) entry=bb0
 bb0:
   v0 = 42
-  jmp bb0.split
+  jmp bb0.split0
 
-bb0.split:
+bb0.split0:
   v1 = Binop.ADD v0 69
   jmp bb1
 
@@ -218,18 +218,19 @@ inl0@bb1:
         opt = FunctionOptimizer(plus)
         opt.specialization = (SchemeNum, SchemeNum)
 
-        for b, i, l in opt.find_lookups():
-            print(b.name, i, l)
-            if isinstance(l.name, SymLit) and opt.should_inline(l.name.value):
-                func = env._global_env.get(l.name.value, None)
-                if func is None:
-                    print("Failed to inline {l.name.value}!")
-                    continue
-                assert isinstance(func, SFunction)
-                b.instructions[i] = bytecode.CopyInst(l.dest, FuncLit(func))
+        opt.seed_inlining(env)
+        opt.compute_dataflow()
+        opt.apply_constant_info()
+        opt.remove_dead_code()
+        opt.inline(env)
+        opt.merge_blocks()
+
+        print(plus)
+        print()
 
         opt.compute_dataflow()
         opt.apply_constant_info()
         opt.remove_dead_code()
+        opt.legalize()
 
         print(plus)

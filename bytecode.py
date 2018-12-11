@@ -796,11 +796,8 @@ class CallInst(Inst):
         else:
             env.stats.specialization_dispatch[id(self)] += 1
             type_tuple = tuple(env[arg].scheme_type() for arg in self.args)
-            if type_tuple in func.specializations:
-                specialized = func.specializations[type_tuple]
-                env[self.dest] = yield from specialized.run(func_env)
-            else:
-                env[self.dest] = yield from func_code.run(func_env)
+            specialized = func.get_specialized(type_tuple)
+            env[self.dest] = yield from specialized.run(func_env)
 
     def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
         types[self.dest] = scheme_types.SchemeObject
@@ -1070,6 +1067,7 @@ class BreakpointInst(Inst):
 class BasicBlock(BB):
     name: str
     instructions: List[Inst] = field(default_factory=list)
+    split_counter: int = 0
 
     def __str__(self) -> str:
         return f"{self.name}:\n" + "\n".join(
@@ -1109,7 +1107,9 @@ class BasicBlock(BB):
             yield from inst.successors()
 
     def split_after(self, idx: int) -> BasicBlock:
-        new_block = BasicBlock(self.name + ".split", self.instructions[idx+1:])
+        new_block = BasicBlock(f"{self.name}.split{self.split_counter}",
+                               self.instructions[idx+1:])
+        self.split_counter += 1
         self.instructions = self.instructions[:idx+1]
         self.add_inst(JmpInst(new_block))
         return new_block

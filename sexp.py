@@ -265,6 +265,12 @@ class SFunction(Value):
         params = ''.join(' ' + p.name for p in self.params)
         return f"<function ({self.name}{params}) at {id(self):x}>"
 
+    def get_specialized(self, types: Optional[TypeTuple]) -> bytecode.Function:
+        assert self.code
+        if types is None:
+            return self.code
+        return self.specializations.get(types, self.code)
+
     def to_param(self) -> bytecode.FuncLit:
         return bytecode.FuncLit(self)
 

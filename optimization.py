@@ -4,10 +4,11 @@ from queue import Queue
 from typing import DefaultDict, Dict, Iterator, List, Optional, Set, Tuple
 
 import bytecode
-from bytecode import (BasicBlock, BoolLit, BrInst, BrnInst, CallInst, Function,
-                      JmpInst, LookupInst, TypeMap, TypeTuple, ValueMap, Var)
+from bytecode import (BasicBlock, BoolLit, BrInst, BrnInst, CallInst, CopyInst,
+                      EvalEnv, FuncLit, Function, JmpInst, LookupInst,
+                      ReturnInst, SymLit, TypeMap, TypeTuple, ValueMap, Var)
 from scheme_types import SchemeObjectType
-from sexp import SBool, SSym, Value
+from sexp import SBool, SFunction, SSym, Value
 
 Id = int
 Edge = Tuple[BasicBlock, int, BasicBlock]
@@ -168,6 +169,8 @@ class FunctionOptimizer:
     def mark_vars(self, func: Function) -> Function:
         func = copy.deepcopy(func)
         prefix = f"inl{self.prefix_counter}"
+        self.prefix_counter += 1
+        func.params = [p.freshen(prefix) for p in func.params]
         for block in func.blocks():
             block.name = f"{prefix}@{block.name}"
             for inst in block.instructions:
@@ -178,8 +181,53 @@ class FunctionOptimizer:
         SHOULD_INLINE = ('assert', 'number?')
         return name.name.startswith('inst/') or name.name in SHOULD_INLINE
 
-    def inline_at_block_tail(self, block: BasicBlock, func: Function) -> None:
-        assert len(block.instructions) >= 2
-        assert isinstance(block.instructions[-2], bytecode.CallInst)
-        assert isinstance(block.instructions[-1], bytecode.JmpInst)
-        raise NotImplementedError("inlining")
+    def seed_inlining(self, env: EvalEnv) -> None:
+        for b, i, l in self.find_lookups():
+            if isinstance(l.name, SymLit) and self.should_inline(l.name.value):
+                func = env._global_env.get(l.name.value, None)
+                if func is None:
+                    print(f"failed to find {l.name} for inlining")
+                    continue
+                assert isinstance(func, SFunction)
+                b.instructions[i] = bytecode.CopyInst(l.dest, FuncLit(func))
+
+    def inline(self, env: EvalEnv) -> None:
+        for block in self.func.blocks():
+            for i in reversed(range(len(block.instructions))):
+                inst = block.instructions[i]
+                if not isinstance(inst, CallInst):
+                    continue
+                if not isinstance(inst.func, FuncLit):
+                    continue
+                next_block = block.split_after(i)
+                func_code = inst.func.func.get_specialized(inst.specialization)
+                func_code = self.mark_vars(func_code)
+                for b in func_code.blocks():
+                    for j, ret in enumerate(b.instructions):
+                        if isinstance(ret, ReturnInst):
+                            b.instructions[j] = CopyInst(inst.dest, ret.ret)
+                            b.instructions.insert(j+1, JmpInst(next_block))
+                block.instructions.pop()  # Remove the jmp
+                block.instructions.pop()  # Remove the call
+                for dst, src in zip(func_code.params, inst.args):
+                    block.instructions.append(CopyInst(dst, src))
+                block.instructions.append(JmpInst(func_code.start))
+        self.preds = None
+        self.succs = None
+        self.info = None
+
+    def merge_blocks(self) -> None:
+        if self.preds is None:
+            self.compute_preds()
+        assert self.preds
+        pass
+
+    def legalize(self) -> None:
+        for block in self.func.blocks():
+            for i, inst in enumerate(block.instructions):
+                if isinstance(inst, CopyInst):
+                    if isinstance(inst.value, FuncLit):
+                        block.instructions[i] = LookupInst(
+                            inst.dest, SymLit(inst.value.func.name))
+                assert not any(isinstance(p, FuncLit)
+                               for p in block.instructions[i].params())
