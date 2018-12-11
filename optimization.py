@@ -231,3 +231,15 @@ class FunctionOptimizer:
                             inst.dest, SymLit(inst.value.func.name))
                 assert not any(isinstance(p, FuncLit)
                                for p in block.instructions[i].params())
+
+    def optimize(self, env: EvalEnv) -> None:
+        self.seed_inlining(env)
+        self.compute_dataflow()
+        self.apply_constant_info()
+        self.remove_dead_code()
+        self.inline(env)
+        self.merge_blocks()
+        self.compute_dataflow()
+        self.apply_constant_info()
+        self.remove_dead_code()
+        self.legalize()

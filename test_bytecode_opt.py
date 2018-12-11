@@ -218,19 +218,5 @@ inl0@bb1:
         opt = FunctionOptimizer(plus)
         opt.specialization = (SchemeNum, SchemeNum)
 
-        opt.seed_inlining(env)
-        opt.compute_dataflow()
-        opt.apply_constant_info()
-        opt.remove_dead_code()
-        opt.inline(env)
-        opt.merge_blocks()
-
-        print(plus)
-        print()
-
-        opt.compute_dataflow()
-        opt.apply_constant_info()
-        opt.remove_dead_code()
-        opt.legalize()
-
+        opt.optimize(env)
         print(plus)
