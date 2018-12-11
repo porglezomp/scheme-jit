@@ -202,7 +202,10 @@ class FunctionOptimizer:
                 next_block = block.split_after(i)
                 func_code = inst.func.func.get_specialized(inst.specialization)
                 func_code = self.mark_vars(func_code)
-                for b in func_code.blocks():
+                # We precompute the list so it doesn't change as we modify
+                # control flow.
+                func_blocks = list(func_code.blocks())
+                for b in func_blocks:
                     for j, ret in enumerate(b.instructions):
                         if isinstance(ret, ReturnInst):
                             b.instructions[j] = CopyInst(inst.dest, ret.ret)
@@ -220,7 +223,18 @@ class FunctionOptimizer:
         if self.preds is None:
             self.compute_preds()
         assert self.preds
-        pass
+        # @TODO: Branch switching for conditional+unconditional jumps
+        # It would be nice to be able to use the better one of the two tails
+        for block in self.func.blocks():
+            last = block.instructions[-1]
+            while (isinstance(last, JmpInst)
+                   and len(self.preds[id(last.target)]) == 1):
+                block.instructions.pop()
+                block.instructions.extend(last.target.instructions)
+                del self.preds[id(last.target)]
+                last = block.instructions[-1]
+        # @TODO: Repair dataflow info instead of invalidating it all?
+        self.info = None
 
     def legalize(self) -> None:
         for block in self.func.blocks():
