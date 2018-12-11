@@ -178,7 +178,18 @@ class FunctionOptimizer:
         return func
 
     def should_inline(self, name: SSym) -> bool:
-        SHOULD_INLINE = ('assert', 'number?')
+        # @TODO: An actual inlining heuristic!
+        SHOULD_INLINE = (
+            'trap', 'trace', 'breakpoint', 'assert', 'typeof',
+            'number?', 'symbol?', 'vector?', 'function?', 'bool?',
+            'pair?', 'nil?',
+            'not',
+            '+', '-', '*', '/', '%',
+            'pointer=', 'symbol=', 'number=', 'number<',
+            'vector-length', 'vector-index', 'vector-set!',
+            '<', '!=', '>', '<=', '>=',
+            'cons', 'car', 'cdr',
+        )
         return name.name.startswith('inst/') or name.name in SHOULD_INLINE
 
     def seed_inlining(self, env: EvalEnv) -> None:
@@ -186,7 +197,9 @@ class FunctionOptimizer:
             if isinstance(l.name, SymLit) and self.should_inline(l.name.value):
                 func = env._global_env.get(l.name.value, None)
                 if func is None:
-                    print(f"failed to find {l.name} for inlining")
+                    # @TODO: A scheme that will allow us to recompile
+                    # functions once a called function is available for
+                    # inlining.
                     continue
                 assert isinstance(func, SFunction)
                 b.instructions[i] = bytecode.CopyInst(l.dest, FuncLit(func))

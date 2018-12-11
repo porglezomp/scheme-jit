@@ -11,7 +11,7 @@ from typing import (Any, Counter, Dict, Generator, Generic, Iterable, Iterator,
 import scheme_types
 import sexp
 from errors import Trap
-from scheme_types import SchemeObjectType, TypeTuple
+from scheme_types import SchemeFunctionType, SchemeObjectType, TypeTuple
 from sexp import SBool, SExp, SNum, SSym, SVect, Value
 
 
@@ -445,7 +445,6 @@ class TypeofInst(Inst):
         val = values[self.value]
         if val is not None:
             values[self.dest] = val.type_name()
-            assert types[self.value].symbol() == values[self.dest]
         else:
             values[self.dest] = types[self.value].symbol()
 
@@ -741,9 +740,12 @@ class ArityInst(Inst):
 
     def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
         ty = types[self.func]
+        val = values[self.func]
         types[self.dest] = scheme_types.SchemeNum
-        if isinstance(ty, scheme_types.SchemeFunctionType) and ty.arity:
+        if isinstance(ty, SchemeFunctionType) and ty.arity is not None:
             values[self.dest] = SNum(ty.arity)
+        elif isinstance(val, sexp.SFunction):
+            values[self.dest] = SNum(len(val.params))
         else:
             values[self.dest] = None
 

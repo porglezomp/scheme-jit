@@ -22,7 +22,8 @@ def main() -> None:
     runner.add_builtins(env)
     runner.add_prelude(env)
     print(runner.run(env, prog_text,
-                     optimize_tail_calls=args.transform_tail_calls))
+                     optimize_tail_calls=args.tail_calls,
+                     optimize_bytecode=args.bytecode_jit))
 
     if args.stats:
         print('-----')
@@ -48,9 +49,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '-s', '--stats', action='store_true',
         help="print execution stats")
-
     parser.add_argument(
-        '--transform_tail_calls', '-t', action='store_true', default=False)
+        '-b', '--bytecode-jit', action='store_true',
+        help="optimize at the bytecode level"
+    )
+    parser.add_argument(
+        '-t', '--tail-calls', action='store_true',
+        help="do tail call optimization"
+    )
 
     return parser.parse_args()
 

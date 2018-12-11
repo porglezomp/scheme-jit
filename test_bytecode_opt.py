@@ -60,8 +60,8 @@ def make_branch_func_object() -> Tuple[Function, Tuple[BasicBlock, ...]]:
 def get_builtins() -> bytecode.EvalEnv:
     env = bytecode.EvalEnv()
     runner.add_intrinsics(env)
-    runner.add_builtins(env)
-    runner.add_prelude(env)
+    runner.add_builtins(env, optimize=True)
+    # runner.add_prelude(env, optimize=True)
     return env
 
 
@@ -208,15 +208,14 @@ inl0@bb1:
             ],
         })
 
-    def test_optimize_plus(self) -> None:
+    def test_optimize(self) -> None:
         env = get_builtins()
-        plus_func = env._global_env[SSym('+')]
-        assert isinstance(plus_func, sexp.SFunction)
-        plus = plus_func.code
-        assert plus
+        func = env._global_env[SSym('+')]
+        assert isinstance(func, sexp.SFunction)
+        assert func.code
 
-        opt = FunctionOptimizer(plus)
+        opt = FunctionOptimizer(func.code)
         opt.specialization = (SchemeNum, SchemeNum)
-
         opt.optimize(env)
-        print(plus)
+
+        print(func.code)
