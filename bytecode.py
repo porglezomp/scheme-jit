@@ -46,6 +46,9 @@ class TypeMap:
                 result[key] = self[key].join(other[key])
         return result
 
+    def __copy__(self) -> TypeMap:
+        return TypeMap(copy.copy(self.types))
+
 
 @dataclass
 class ValueMap:
@@ -87,6 +90,9 @@ class ValueMap:
         if not allow_func and isinstance(param, FuncLit):
             return key
         return param
+
+    def __copy__(self) -> ValueMap:
+        return ValueMap(copy.copy(self.values))
 
 
 class Parameter(ABC):

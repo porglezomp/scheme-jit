@@ -75,9 +75,9 @@ class FunctionOptimizer:
     ) -> List[Tuple[TypeMap, ValueMap]]:
         abstract = []
         for i, inst in enumerate(block.instructions):
-            abstract.append((copy.deepcopy(types), copy.deepcopy(values)))
+            abstract.append((copy.copy(types), copy.copy(values)))
             inst.run_abstract(types, values)
-        abstract.append((copy.deepcopy(types), copy.deepcopy(values)))
+        abstract.append((copy.copy(types), copy.copy(values)))
         return abstract
 
     def block_input_maps(self, block: BasicBlock) -> Tuple[TypeMap, ValueMap]:
@@ -100,7 +100,8 @@ class FunctionOptimizer:
 
         # Join all of those maps
         if pred_maps:
-            types, values = copy.deepcopy(pred_maps[0])
+            types, values = pred_maps[0]
+            types, values = copy.copy(types), copy.copy(values)
             for ty, val in pred_maps:
                 types, values = types.join(ty), values.join(val)
         else:
