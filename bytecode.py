@@ -15,6 +15,12 @@ from scheme_types import SchemeFunctionType, SchemeObjectType, TypeTuple
 from sexp import SBool, SExp, SNum, SSym, SVect, Value
 
 
+def get_value(values: Dict[Var, Parameter], param: Parameter) -> Parameter:
+    if isinstance(param, Var):
+        return values.get(param, param)
+    return param
+
+
 @dataclass
 class TypeMap:
     types: Dict[Var, SchemeObjectType] = field(default_factory=dict)
@@ -115,6 +121,10 @@ class Inst(ABC):
 
     @abstractmethod
     def constant_fold(self, values: ValueMap) -> Inst:
+        ...
+
+    @abstractmethod
+    def copy_prop(self, values: Dict[Var, Parameter]) -> Inst:
         ...
 
     @abstractmethod
@@ -423,6 +433,11 @@ class BinopInst(Inst):
                          values.get_param(self.lhs),
                          values.get_param(self.rhs))
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> BinopInst:
+        return BinopInst(self.dest, self.op,
+                         get_value(values, self.lhs),
+                         get_value(values, self.rhs))
+
     def dests(self) -> List[Var]:
         return [self.dest]
 
@@ -443,6 +458,7 @@ class TypeofInst(Inst):
 
     def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
         val = values[self.value]
+        types[self.dest] = scheme_types.SchemeSym
         if val is not None:
             values[self.dest] = val.type_name()
         else:
@@ -457,6 +473,9 @@ class TypeofInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> TypeofInst:
         return TypeofInst(self.dest, values.get_param(self.value))
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> TypeofInst:
+        return TypeofInst(self.dest, get_value(values, self.value))
 
     def dests(self) -> List[Var]:
         return [self.dest]
@@ -489,6 +508,9 @@ class CopyInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> CopyInst:
         return CopyInst(self.dest, values.get_param(self.value))
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> CopyInst:
+        return CopyInst(self.dest, get_value(values, self.value))
 
     def dests(self) -> List[Var]:
         return [self.dest]
@@ -527,6 +549,9 @@ class LookupInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> LookupInst:
         return LookupInst(self.dest, values.get_param(self.name))
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> LookupInst:
+        return LookupInst(self.dest, get_value(values, self.name))
 
     def dests(self) -> List[Var]:
         return [self.dest]
@@ -569,6 +594,9 @@ class AllocInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> AllocInst:
         return AllocInst(self.dest, values.get_param(self.size))
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> AllocInst:
+        return AllocInst(self.dest, get_value(values, self.size))
 
     def dests(self) -> List[Var]:
         return [self.dest]
@@ -625,6 +653,11 @@ class LoadInst(Inst):
                         values.get_param(self.addr),
                         values.get_param(self.offset))
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> LoadInst:
+        return LoadInst(self.dest,
+                        get_value(values, self.addr),
+                        get_value(values, self.offset))
+
     def dests(self) -> List[Var]:
         return [self.dest]
 
@@ -675,6 +708,11 @@ class StoreInst(Inst):
                          values.get_param(self.offset),
                          values.get_param(self.value))
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> StoreInst:
+        return StoreInst(self.addr,
+                         get_value(values, self.offset),
+                         get_value(values, self.value))
+
     def dests(self) -> List[Var]:
         return []
 
@@ -718,6 +756,9 @@ class LengthInst(Inst):
     def constant_fold(self, values: ValueMap) -> LengthInst:
         return copy.copy(self)
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> LengthInst:
+        return copy.copy(self)
+
     def dests(self) -> List[Var]:
         return [self.dest]
 
@@ -758,6 +799,9 @@ class ArityInst(Inst):
 
     def constant_fold(self, values: ValueMap) -> ArityInst:
         return ArityInst(self.dest, values.get_param(self.func))
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> ArityInst:
+        return ArityInst(self.dest, get_value(values, self.func))
 
     def dests(self) -> List[Var]:
         return [self.dest]
@@ -826,6 +870,13 @@ class CallInst(Inst):
                         [values.get_param(arg) for arg in self.args],
                         self.specialization)
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> CallInst:
+        # @TODO: Improve the specialization
+        return CallInst(self.dest,
+                        get_value(values, self.func),
+                        [get_value(values, arg) for arg in self.args],
+                        self.specialization)
+
     def dests(self) -> List[Var]:
         return [self.dest]
 
@@ -859,6 +910,9 @@ class JmpInst(Inst):
         pass
 
     def constant_fold(self, values: ValueMap) -> JmpInst:
+        return copy.copy(self)
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> JmpInst:
         return copy.copy(self)
 
     def dests(self) -> List[Var]:
@@ -901,6 +955,9 @@ class BrInst(Inst):
     def constant_fold(self, values: ValueMap) -> BrInst:
         return BrInst(values.get_param(self.cond), self.target)
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> BrInst:
+        return BrInst(get_value(values, self.cond), self.target)
+
     def dests(self) -> List[Var]:
         return []
 
@@ -941,6 +998,9 @@ class BrnInst(Inst):
     def constant_fold(self, values: ValueMap) -> BrnInst:
         return BrnInst(values.get_param(self.cond), self.target)
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> BrnInst:
+        return BrnInst(get_value(values, self.cond), self.target)
+
     def dests(self) -> List[Var]:
         return []
 
@@ -970,6 +1030,9 @@ class ReturnInst(Inst):
     def constant_fold(self, values: ValueMap) -> ReturnInst:
         return ReturnInst(values.get_param(self.ret))
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> ReturnInst:
+        return ReturnInst(get_value(values, self.ret))
+
     def dests(self) -> List[Var]:
         return []
 
@@ -997,6 +1060,9 @@ class TrapInst(Inst):
         pass
 
     def constant_fold(self, values: ValueMap) -> TrapInst:
+        return copy.copy(self)
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> TrapInst:
         return copy.copy(self)
 
     def dests(self) -> List[Var]:
@@ -1028,6 +1094,9 @@ class TraceInst(Inst):
     def constant_fold(self, values: ValueMap) -> TraceInst:
         return TraceInst(values.get_param(self.value))
 
+    def copy_prop(self, values: Dict[Var, Parameter]) -> TraceInst:
+        return TraceInst(get_value(values, self.value))
+
     def dests(self) -> List[Var]:
         return []
 
@@ -1053,6 +1122,9 @@ class BreakpointInst(Inst):
         pass
 
     def constant_fold(self, values: ValueMap) -> BreakpointInst:
+        return copy.copy(self)
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> BreakpointInst:
         return copy.copy(self)
 
     def dests(self) -> List[Var]:

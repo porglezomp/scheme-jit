@@ -1,3 +1,4 @@
+import copy
 import unittest
 from typing import DefaultDict, Tuple
 
@@ -214,8 +215,33 @@ inl0@bb1:
         assert isinstance(func, sexp.SFunction)
         assert func.code
 
-        opt = FunctionOptimizer(func.code)
-        # opt.specialization = (SchemeNum, SchemeNum)
+        code = copy.deepcopy(func.code)
+        self.assertEqual(str(code), '''
+function (? a b) entry=bb0
+bb0:
+  inl4@inl1@inl0@result = typeof a
+  inl4@inl0@inl0@result = Binop.SYM_EQ inl4@inl1@inl0@result 'number
+  brn inl4@inl0@inl0@result inl3@bb0.split0
+  inl2@inl1@inl0@result = typeof b
+  inl2@inl0@inl0@result = Binop.SYM_EQ inl2@inl1@inl0@result 'number
+  brn inl2@inl0@inl0@result inl1@bb0.split0
+  inl0@result = Binop.ADD a b
+  return inl0@result
+
+inl3@bb0.split0:
+  trap '(trap)'
+
+inl1@bb0.split0:
+  trap '(trap)'
+'''.strip())
+
+        opt = FunctionOptimizer(code)
+        opt.specialization = (SchemeNum, SchemeNum)
         opt.optimize(env)
 
-        print(func.code)
+        self.assertEqual(str(code), '''
+function (? a b) entry=bb0
+bb0:
+  inl0@result = Binop.ADD a b
+  return inl0@result
+'''.strip())

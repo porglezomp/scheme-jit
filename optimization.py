@@ -5,10 +5,10 @@ from typing import DefaultDict, Dict, Iterator, List, Optional, Set, Tuple
 
 import bytecode
 from bytecode import (BasicBlock, BoolLit, BrInst, BrnInst, CallInst, CopyInst,
-                      EvalEnv, FuncLit, Function, JmpInst, LookupInst,
-                      ReturnInst, SymLit, TrapInst, TypeMap, TypeTuple,
-                      ValueMap, Var)
-from scheme_types import SchemeObjectType
+                      EvalEnv, FuncLit, Function, Inst, JmpInst, LookupInst,
+                      Parameter, ReturnInst, SymLit, TrapInst, TypeMap,
+                      TypeTuple, ValueMap, Var)
+from scheme_types import SchemeObject
 from sexp import SBool, SFunction, SSym, Value
 
 Id = int
@@ -235,6 +235,22 @@ class FunctionOptimizer:
         self.succs = None
         self.info = None
 
+    def copy_propagate_block(self, block: BasicBlock) -> None:
+        copies: Dict[Var, Parameter] = {}
+        for i, inst in enumerate(block.instructions):
+            if isinstance(inst, CopyInst):
+                value = inst.value
+                while value in copies:
+                    assert isinstance(value, Var)
+                    value = copies[value]
+                copies[inst.dest] = value
+            else:
+                block.instructions[i] = inst.copy_prop(copies)
+
+    def copy_propagate(self) -> None:
+        for block in self.func.blocks():
+            self.copy_propagate_block(block)
+
     def merge_blocks(self) -> None:
         if self.preds is None:
             self.compute_preds()
@@ -283,6 +299,35 @@ class FunctionOptimizer:
                 assert not any(isinstance(p, FuncLit)
                                for p in block.instructions[i].params())
 
+    def fmt_inst(self, inst: Inst, types: TypeMap, values: ValueMap) -> str:
+        bindings = []
+        for param in inst.params():
+            if isinstance(param, Var):
+                val = values[param]
+                if val is not None:
+                    bindings.append(f"{param} = {val}")
+                elif types[param] != SchemeObject:
+                    bindings.append(f"{param}: {types[param]}")
+        if bindings:
+            return f"{inst!s:<59} {{{', '.join(bindings)}}}"
+        else:
+            return str(inst)
+
+    def print_func(self) -> None:
+        if self.info is None:
+            print(self.func)
+            return
+
+        print(f"function (?{''.join(' ' + x.name for x in self.func.params)})"
+              f" entry={self.func.start.name}")
+        for block in self.func.blocks():
+            print(f"{block.name}:")
+            block_info = self.info[id(block)]
+            for i, inst in enumerate(block.instructions):
+                types, values = block_info[i]
+                print("  " + self.fmt_inst(inst, types, values))
+            print()
+
     def optimize(self, env: EvalEnv) -> None:
         self.seed_inlining(env)
         self.compute_dataflow()
@@ -295,3 +340,5 @@ class FunctionOptimizer:
         self.remove_dead_code()
         self.merge_blocks()
         self.legalize()
+        self.copy_propagate()
+        self.remove_dead_code()
