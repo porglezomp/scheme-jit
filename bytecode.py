@@ -6,6 +6,7 @@ from enum import Enum, auto
 from typing import (Any, Counter, Dict, Generator, Generic, Iterable, Iterator,
                     List, Optional, Set, TypeVar)
 
+import find_tail_calls
 import scheme_types
 import sexp
 from errors import Trap
@@ -99,7 +100,11 @@ class EvalEnv:
 
     def __init__(self,
                  local_env: Optional[Dict[Var, Value]] = None,
-                 global_env: Optional[Dict[SSym, Value]] = None):
+                 global_env: Optional[Dict[SSym, Value]] = None,
+                 optimize_tail_calls: bool = False,
+                 naive_jit: bool = False,
+                 bytecode_jit: bool = False,
+                 print_specializations: bool = False):
         if local_env is None:
             self._local_env = {}
         else:
@@ -110,9 +115,18 @@ class EvalEnv:
             self._global_env = global_env
         self.stats = Stats()
 
-    def copy(self) -> EvalEnv:
-        """Return a shallow copy of the environment."""
-        env = EvalEnv(self._local_env.copy(), self._global_env)
+        self.optimize_tail_calls = optimize_tail_calls
+        self.naive_jit = naive_jit
+        self.bytecode_jit = bytecode_jit
+        self.print_specializations = print_specializations
+
+    def new_local(self) -> EvalEnv:
+        env = EvalEnv(
+            {},
+            self._global_env,
+            naive_jit=self.naive_jit,
+            bytecode_jit=self.bytecode_jit,
+            print_specializations=self.print_specializations)
         env.stats = self.stats
         return env
 
@@ -341,26 +355,64 @@ class CallInst(Inst):
     def run_call(self, env: EvalEnv) -> Generator[EvalEnv, None, None]:
         func = env[self.func]
         assert isinstance(func, sexp.SFunction)
-        if func.code is None:
-            raise NotImplementedError("JIT compiling functions!")
+        assert func.code is not None
         func_code = func.code
-        func_env = env.copy()
+
+        call_args_deducer = scheme_types.CallArgsTypeAnalyzer()
+        for arg in self.args:
+            call_args_deducer.visit(env[arg])
+
+        type_tuple = tuple(call_args_deducer.arg_types)
+        func.calls[type_tuple] += 1
+        if (not func.name.name.startswith('inst/')
+                and type_tuple not in func.specializations
+                and func.calls[type_tuple] > 1):
+            self._generate_specialization(env, func, func_code, type_tuple)
+
+        func_env = env.new_local()
         assert len(func_code.params) == len(self.args)
         func_env._local_env = {
             name: env[arg] for name, arg in zip(func_code.params, self.args)
         }
-        if self.specialization:
-            assert self.specialization in func.specializations
+        if self.specialization and self.specialization in func.specializations:
             specialized = func.specializations[self.specialization]
             env[self.dest] = yield from specialized.run(func_env)
         else:
             env.stats.specialization_dispatch[id(self)] += 1
-            type_tuple = tuple(env[arg].scheme_type() for arg in self.args)
             if type_tuple in func.specializations:
                 specialized = func.specializations[type_tuple]
                 env[self.dest] = yield from specialized.run(func_env)
             else:
                 env[self.dest] = yield from func_code.run(func_env)
+
+    def _generate_specialization(self, env: EvalEnv,
+                                 func: sexp.SFunction,
+                                 func_code: Function,
+                                 type_tuple: TypeTuple) -> None:
+        if env.naive_jit:
+            if env.print_specializations:
+                print('Specializing:', func.name, type_tuple)
+            param_types = dict(zip(func.params, type_tuple))
+            type_analyzer = scheme_types.FunctionTypeAnalyzer(
+                param_types, env._global_env)
+            type_analyzer.visit(func)
+
+            tail_calls = None
+            if env.optimize_tail_calls:
+                tail_call_finder = find_tail_calls.TailCallFinder()
+                tail_call_finder.visit(func)
+                tail_calls = tail_call_finder.tail_calls
+
+            from emit_IR import FunctionEmitter
+            emitter = FunctionEmitter(env._global_env,
+                                      tail_calls=tail_calls,
+                                      expr_types=type_analyzer)
+            emitter.visit(func)
+
+            emitted_func = emitter.get_emitted_func()
+            func.specializations[type_tuple] = emitted_func
+        elif env.bytecode_jit:
+            raise NotImplementedError
 
     def __str__(self) -> str:
         args = ', '.join(str(arg) for arg in self.args)
@@ -505,7 +557,6 @@ class BasicBlock(BB):
                 yield from inst.run_call(env)
             else:
                 next_bb = inst.run(env)
-            yield env.copy()
             if next_bb is not None:
                 env.stats.taken_count[id(inst)] += 1
                 break
@@ -551,9 +602,9 @@ class Function:
         while blocks:
             block = blocks.pop()
             yield block
+            visited.add(id(block))
             for b in block.successors():
                 if id(b) not in visited:
-                    visited.add(id(b))
                     blocks.append(b)
 
     def __str__(self) -> str:

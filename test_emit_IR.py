@@ -1,7 +1,11 @@
 import unittest
+from typing import Dict, Optional
 
 import bytecode
 import emit_IR
+import find_tail_calls
+import runner
+import scheme_types
 import sexp
 
 
@@ -227,10 +231,7 @@ class EmitExpressionTestCase(unittest.TestCase):
         expected_lambda = bytecode.Function(
             [bytecode.Var('spam')],
             bytecode.BasicBlock(
-                'bb0',
-                [
-                    bytecode.ReturnInst(bytecode.Var('spam'))
-                ]
+                'bb0', [bytecode.ReturnInst(bytecode.Var('spam'))]
             )
         )
 
@@ -673,19 +674,16 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         expected = bytecode.Function(
             [return_var],
             bytecode.BasicBlock(
-                'bb0',
-                [bytecode.ReturnInst(return_var)]
+                'bb0', [bytecode.ReturnInst(return_var)]
             )
         )
 
-        self.assertEqual(1, len(self.function_emitter.global_env))
-        actual_func = self.function_emitter.global_env[sexp.SSym('func')]
-        assert isinstance(actual_func, sexp.SFunction)
-        self.assertEqual(expected, actual_func.code)
+        self.assertEqual(expected, self.function_emitter.get_emitted_func())
 
     def test_emit_multiple_function_defs(self) -> None:
         prog = sexp.parse('(define (func) 42) (define (func2) 43)')
-        self.function_emitter.visit(prog)
+
+        self.function_emitter.visit(prog[0])
 
         expected_func = bytecode.Function(
             [],
@@ -694,7 +692,10 @@ class EmitFunctionDefTestCase(unittest.TestCase):
                 [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(42)))]
             )
         )
+        self.assertEqual(
+            expected_func, self.function_emitter.get_emitted_func())
 
+        self.function_emitter.visit(prog[1])
         expected_func2 = bytecode.Function(
             [],
             bytecode.BasicBlock(
@@ -702,16 +703,8 @@ class EmitFunctionDefTestCase(unittest.TestCase):
                 [bytecode.ReturnInst(bytecode.NumLit(sexp.SNum(43)))]
             )
         )
-
-        self.assertEqual(2, len(self.function_emitter.global_env))
-
-        actual_func = self.function_emitter.global_env[sexp.SSym('func')]
-        assert isinstance(actual_func, sexp.SFunction)
-        self.assertEqual(expected_func, actual_func.code)
-
-        actual_func2 = self.function_emitter.global_env[sexp.SSym('func2')]
-        assert isinstance(actual_func2, sexp.SFunction)
-        self.assertEqual(expected_func2, actual_func2.code)
+        self.assertEqual(
+            expected_func2, self.function_emitter.get_emitted_func())
 
     def test_emit_lambda_def(self) -> None:
         prog = sexp.parse('(define (func) (lambda (spam) spam))')
@@ -734,18 +727,910 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         expected_lambda = bytecode.Function(
             [bytecode.Var('spam')],
             bytecode.BasicBlock(
-                'bb0',
-                [
-                    bytecode.ReturnInst(bytecode.Var('spam'))
-                ]
+               'bb0', [bytecode.ReturnInst(bytecode.Var('spam'))]
             )
         )
 
-        actual_func = self.function_emitter.global_env[sexp.SSym('func')]
-        assert isinstance(actual_func, sexp.SFunction)
-        self.assertEqual(expected_func, actual_func.code)
+        self.assertEqual(expected_func,
+                         self.function_emitter.get_emitted_func())
 
         actual_lambda = (
             self.function_emitter.global_env[sexp.SSym('__lambda0')])
         assert isinstance(actual_lambda, sexp.SFunction)
         self.assertEqual(expected_lambda, actual_lambda.code)
+
+    def test_emit_begin_in_func(self) -> None:
+        self.maxDiff = None
+        prog = sexp.parse('(define (spam) (begin (trace 42) (trace 43) 44))')
+        self.function_emitter.visit(prog)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'trace
+  v1 = typeof v0
+  v2 = Binop.SYM_EQ v1 'function
+  brn v2 non_function
+  v3 = arity v0
+  v4 = Binop.NUM_EQ v3 1
+  brn v4 wrong_arity
+  v5 = call v0 (42)
+  v6 = lookup 'trace
+  v7 = typeof v6
+  v8 = Binop.SYM_EQ v7 'function
+  brn v8 non_function
+  v9 = arity v6
+  v10 = Binop.NUM_EQ v9 1
+  brn v10 wrong_arity
+  v11 = call v6 (43)
+  return 44
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
+
+        '''
+
+        self.assertEqual(
+            expected.strip(),
+            str(self.function_emitter.get_emitted_func()).strip())
+
+
+class EmitOptimizedFuncTestCase(unittest.TestCase):
+    env: bytecode.EvalEnv
+
+    def setUp(self) -> None:
+        self.env = bytecode.EvalEnv()
+        runner.add_intrinsics(self.env)
+        runner.add_builtins(self.env)
+        runner.add_prelude(self.env)
+
+    def get_optimized_func_bytecode(
+            self, code_str: str,
+            param_types: Optional[Dict[sexp.SSym,
+                                       scheme_types.SchemeObjectType]] = None,
+            optimize_tail_calls: bool = False) -> str:
+        [func] = sexp.parse(code_str)
+        assert isinstance(func, sexp.SFunction)
+
+        tail_calls = None
+        if optimize_tail_calls:
+            tail_call_finder = find_tail_calls.TailCallFinder()
+            tail_call_finder.visit(func)
+            tail_calls = tail_call_finder.tail_calls
+
+        # Make sure func is in global env
+        emitter = emit_IR.FunctionEmitter(self.env._global_env)
+        emitter.visit(func)
+        func.code = emitter.get_emitted_func()
+        self.env._global_env[func.name] = func
+
+        type_analyzer = scheme_types.FunctionTypeAnalyzer(
+            param_types={} if param_types is None else param_types,
+            global_env=self.env._global_env)
+        type_analyzer.visit(func)
+
+        optimizing_emitter = emit_IR.FunctionEmitter(
+            self.env._global_env,
+            tail_calls=tail_calls,
+            expr_types=type_analyzer)
+        optimizing_emitter.visit(func)
+
+        return str(optimizing_emitter.get_emitted_func())
+
+    # -------------------------------------------------------------------------
+
+    def test_partially_specialized_plus(self) -> None:
+        code = '''
+            (define (plus first second)
+                (assert (number? first))
+                (assert (number? second))
+                (inst/+ first second)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('first'): scheme_types.SchemeNum,
+                sexp.SSym('second'): scheme_types.SchemeObject
+            }
+        )
+
+        expected = '''
+function (? first second) entry=bb0
+bb0:
+  v0 = lookup 'assert
+  v1 = lookup 'number?
+  v2 = call v1 (second) (SchemeObjectType())
+  v3 = call v0 (v2) (SchemeBoolType())
+  v4 = lookup 'inst/+
+  v5 = call v4 (first, second) (SchemeNumType(), SchemeObjectType())
+  return v5
+'''
+
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_fully_specialized_plus(self) -> None:
+        code = '''
+            (define (plus first second)
+                (assert (number? first))
+                (assert (number? second))
+                (inst/+ first second)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('first'): scheme_types.SchemeNum,
+                sexp.SSym('second'): scheme_types.SchemeNum
+            }
+        )
+
+        expected = '''
+function (? first second) entry=bb0
+bb0:
+  v0 = lookup 'inst/+
+  v1 = call v0 (first, second) (SchemeNumType(), SchemeNumType())
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_fully_specialized_plus_args_are_exprs(self) -> None:
+        code = '''
+            (define (plus first second)
+                (assert (number? first))
+                (assert (number? second))
+                (inst/+ (+ 1 first) (+ second 1))
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('first'): scheme_types.SchemeNum,
+                sexp.SSym('second'): scheme_types.SchemeNum
+            }
+        )
+
+        expected = '''
+function (? first second) entry=bb0
+bb0:
+  v0 = lookup 'inst/+
+  v1 = lookup '+
+  v2 = call v1 (1, first) (SchemeNumType(), SchemeNumType())
+  v3 = lookup '+
+  v4 = call v3 (second, 1) (SchemeNumType(), SchemeNumType())
+  v5 = call v0 (v2, v4) (SchemeNumType(), SchemeNumType())
+  return v5
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_specialize_in_bounds_vector_access(self) -> None:
+        code = '''
+            (define (pairy pair)
+                (vector-index pair 0)
+                (vector-set! pair 1 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
+            }
+        )
+
+        expected = '''
+function (? pair) entry=bb0
+bb0:
+  v0 = lookup 'inst/load
+  v1 = call v0 (pair, 0) (SchemeVectType(length=2), SchemeNumType())
+  v2 = lookup 'inst/store
+  v3 = call v2 (pair, 1, 42) \
+(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
+  return v3
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_out_of_bounds_vector_access_checks_not_removed(self) -> None:
+        code = '''
+            (define (pairy pair)
+                (vector-index pair 2)
+                (vector-set! pair 2 42)
+
+                (vector-index pair -1)
+                (vector-set! pair -1 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
+            }
+        )
+
+        expected = '''
+function (? pair) entry=bb0
+bb0:
+  v0 = lookup 'vector-index
+  v1 = call v0 (pair, 2) (SchemeVectType(length=2), SchemeNumType())
+  v2 = lookup 'vector-set!
+  v3 = call v2 (pair, 2, 42) \
+(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
+  v4 = lookup 'vector-index
+  v5 = call v4 (pair, -1) (SchemeVectType(length=2), SchemeNumType())
+  v6 = lookup 'vector-set!
+  v7 = call v6 (pair, -1, 42) \
+(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
+  return v7
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_non_constant_index_checks_not_removed(self) -> None:
+        code = '''
+            (define (pairy pair)
+                (vector-index pair index)
+                (vector-set! pair index 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
+            }
+        )
+
+        expected = '''
+function (? pair) entry=bb0
+bb0:
+  v0 = lookup 'vector-index
+  v1 = lookup 'index
+  v2 = call v0 (pair, v1) (SchemeVectType(length=2), SchemeObjectType())
+  v3 = lookup 'vector-set!
+  v4 = lookup 'index
+  v5 = call v3 (pair, v4, 42) \
+(SchemeVectType(length=2), SchemeObjectType(), SchemeNumType())
+  return v5
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_vector_access_unknown_vector_size(self) -> None:
+        code = '''
+            (define (pairy pair)
+                (vector-index pair 0)
+                (vector-set! pair 1 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(None),
+            }
+        )
+
+        expected = '''
+function (? pair) entry=bb0
+bb0:
+  v0 = lookup 'vector-index
+  v1 = call v0 (pair, 0) (SchemeVectType(length=None), SchemeNumType())
+  v2 = lookup 'vector-set!
+  v3 = call v2 (pair, 1, 42) \
+(SchemeVectType(length=None), SchemeNumType(), SchemeNumType())
+  return v3
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_vector_access_non_vector(self) -> None:
+        code = '''
+            (define (pairy pair)
+                (vector-index pair 0)
+                (vector-set! pair 1 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeObject,
+            }
+        )
+
+        expected = '''
+function (? pair) entry=bb0
+bb0:
+  v0 = lookup 'vector-index
+  v1 = call v0 (pair, 0) (SchemeObjectType(), SchemeNumType())
+  v2 = lookup 'vector-set!
+  v3 = call v2 (pair, 1, 42) \
+(SchemeObjectType(), SchemeNumType(), SchemeNumType())
+  return v3
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_vector_access_non_number_index(self) -> None:
+        code = '''
+            (define (pairy pair)
+                (vector-index pair true)
+                (vector-set! pair false 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('pair'): scheme_types.SchemeVectType(2),
+            }
+        )
+
+        expected = '''
+function (? pair) entry=bb0
+bb0:
+  v0 = lookup 'vector-index
+  v1 = call v0 (pair, 'True) (SchemeVectType(length=2), SchemeBoolType())
+  v2 = lookup 'vector-set!
+  v3 = call v2 (pair, 'False, 42) \
+(SchemeVectType(length=2), SchemeBoolType(), SchemeNumType())
+  return v3
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_and_arity_check_param_is_func(self) -> None:
+        code = '''
+            (define (spam func)
+                (func 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(1)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  v0 = call func (42) (SchemeNumType())
+  return v0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_check_param_is_func_wrong_num_args(self) -> None:
+        code = '''
+            (define (spam func)
+                (func 42 43)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(1)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  v0 = arity func
+  v1 = Binop.NUM_EQ v0 2
+  brn v1 wrong_arity
+  v2 = call func (42, 43) (SchemeNumType(), SchemeNumType())
+  return v2
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_check_param_is_func_arity_unknown(self) -> None:
+        code = '''
+            (define (spam func)
+                (func 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(None)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  v0 = arity func
+  v1 = Binop.NUM_EQ v0 1
+  brn v1 wrong_arity
+  v2 = call func (42) (SchemeNumType())
+  return v2
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_and_arity_check_lambda_call(self) -> None:
+        code = '''
+            (define (spam)
+                ((lambda (egg) egg) 42)
+            )'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup '__lambda0
+  v1 = call v0 (42) (SchemeNumType())
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_check_lambda_call(self) -> None:
+        code = '''
+            (define (spam)
+                ((lambda (egg) egg) 42 43)
+            )'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup '__lambda0
+  v1 = arity v0
+  v2 = Binop.NUM_EQ v1 2
+  brn v2 wrong_arity
+  v3 = call v0 (42, 43) (SchemeNumType(), SchemeNumType())
+  return v3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_and_arity_check_user_func_call(self) -> None:
+        code = '''(define (spam) (spam))'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = call v0 ()
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_check_user_func_call(self) -> None:
+        code = '''(define (spam) (spam 42))'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = arity v0
+  v2 = Binop.NUM_EQ v1 1
+  brn v2 wrong_arity
+  v3 = call v0 (42) (SchemeNumType())
+  return v3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_and_arity_check_builtin_func_call(self) -> None:
+        code = '''(define (spam) (+ 3 4))'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup '+
+  v1 = call v0 (3, 4) (SchemeNumType(), SchemeNumType())
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_removed_is_func_check_builtin_func_call(self) -> None:
+        code = '''(define (spam) (bool? 3 4))'''
+        optimized = self.get_optimized_func_bytecode(code)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'bool?
+  v1 = arity v0
+  v2 = Binop.NUM_EQ v1 2
+  brn v2 wrong_arity
+  v3 = call v0 (3, 4) (SchemeNumType(), SchemeNumType())
+  return v3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_would_be_tail_call_wrong_arity(self) -> None:
+        code = '''(define (spam) (spam 42))'''
+        optimized = self.get_optimized_func_bytecode(
+            code, optimize_tail_calls=True)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = arity v0
+  v2 = Binop.NUM_EQ v1 1
+  brn v2 wrong_arity
+  v3 = call v0 (42) (SchemeNumType())
+  return v3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_tail_call_right_arity(self) -> None:
+        code = '''(define (spam egg) (spam 42))'''
+        optimized = self.get_optimized_func_bytecode(
+            code, optimize_tail_calls=True)
+
+        expected = '''
+function (? egg) entry=bb0
+bb0:
+  egg = 42
+  jmp bb0
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_tail_call_in_specialized(self) -> None:
+        code = '''
+            (define (spam egg)
+                (assert (number? egg))
+                (spam (+ egg 1))
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('egg'): scheme_types.SchemeNum
+            },
+            optimize_tail_calls=True)
+
+        expected = '''
+function (? egg) entry=bb0
+bb0:
+  v0 = lookup '+
+  v1 = call v0 (egg, 1) (SchemeNumType(), SchemeNumType())
+  egg = v1
+  jmp bb0
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_tail_call_in_specialized_code_mismatching_arg_types(self) -> None:
+        code = '''
+            (define (spam egg)
+                (assert (number? egg))
+                (spam true)
+            )'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('egg'): scheme_types.SchemeNum
+            },
+            optimize_tail_calls=True)
+
+        expected = '''
+function (? egg) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = call v0 ('True) (SchemeBoolType())
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_remove_is_function_assertion_arity_known(self) -> None:
+        code = '''(define (spam func) (assert (function? func)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(1)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_remove_is_function_assertion_arity_unknown(self) -> None:
+        code = '''(define (spam func) (assert (function? func)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeFunctionType(None)
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_non_func_assertion_not_removed(self) -> None:
+        code = '''(define (spam func) (assert (function? func)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('func'): scheme_types.SchemeObject
+            }
+        )
+
+        expected = '''
+function (? func) entry=bb0
+bb0:
+  v0 = lookup 'assert
+  v1 = lookup 'function?
+  v2 = call v1 (func) (SchemeObjectType())
+  v3 = call v0 (v2) (SchemeBoolType())
+  return v3
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_remove_is_vector_assertion_size_known(self) -> None:
+        code = '''(define (spam vec) (assert (vector? vec)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('vec'): scheme_types.SchemeVectType(4)
+            }
+        )
+
+        expected = '''
+function (? vec) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_remove_is_vector_assertion_size_unknown(self) -> None:
+        code = '''(define (spam vec) (assert (vector? vec)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('vec'): scheme_types.SchemeVectType(None)
+            }
+        )
+
+        expected = '''
+function (? vec) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_remove_pair_assertion(self) -> None:
+        code = '''(define (spam vec) (assert (pair? vec)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('vec'): scheme_types.SchemeVectType(2)
+            }
+        )
+
+        expected = '''
+function (? vec) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_remove_nil_assertion(self) -> None:
+        code = '''(define (spam vec) (assert (nil? vec)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('vec'): scheme_types.SchemeVectType(0)
+            }
+        )
+
+        expected = '''
+function (? vec) entry=bb0
+bb0:
+  return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_non_vec_assert_not_removed(self) -> None:
+        code = '''(define (spam egg) (assert (vector? egg)))'''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('egg'): scheme_types.SchemeObject
+            }
+        )
+
+        expected = '''
+function (? egg) entry=bb0
+bb0:
+  v0 = lookup 'assert
+  v1 = lookup 'vector?
+  v2 = call v1 (egg) (SchemeObjectType())
+  v3 = call v0 (v2) (SchemeBoolType())
+  return v3
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    # -------------------------------------------------------------------------
+
+    def test_eq_specialization_both_num(self) -> None:
+        code = '''
+            (define (= x y)
+                (if (not (symbol= (typeof x) (typeof y)))
+                    false
+                    (if (symbol? x)
+                        (symbol= x y)
+                        (if (number? x)
+                            (number= x y)
+                            (if (vector? x)
+                                (vector= x y)
+                                (pointer= x y))))))
+        '''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('x'): scheme_types.SchemeNum,
+                sexp.SSym('y'): scheme_types.SchemeNum,
+            }
+        )
+
+        expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'number=
+  v1 = call v0 (x, y) (SchemeNumType(), SchemeNumType())
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_eq_specialization_both_sym_lit(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                sexp.SSym('x'): scheme_types.SchemeSym,
+                sexp.SSym('y'): scheme_types.SchemeSym,
+            }
+        )
+
+        expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'symbol=
+  v1 = call v0 (x, y) (SchemeSymType(), SchemeSymType())
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_eq_specialization_both_vector(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                # Length shouldn't matter here
+                sexp.SSym('x'): scheme_types.SchemeVectType(3),
+                sexp.SSym('y'): scheme_types.SchemeVectType(1),
+            }
+        )
+
+        expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'vector=
+  v1 = call v0 (x, y) (SchemeVectType(length=3), SchemeVectType(length=1))
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_eq_specialization_both_bool(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                sexp.SSym('x'): scheme_types.SchemeBool,
+                sexp.SSym('y'): scheme_types.SchemeBool,
+            }
+        )
+
+        expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'pointer=
+  v1 = call v0 (x, y) (SchemeBoolType(), SchemeBoolType())
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_eq_specialization_both_func(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                # Arity shouldn't matter here
+                sexp.SSym('x'): scheme_types.SchemeFunctionType(1),
+                sexp.SSym('y'): scheme_types.SchemeFunctionType(2),
+            }
+        )
+
+        expected = '''
+function (? x y) entry=bb0
+bb0:
+  v0 = lookup 'pointer=
+  v1 = call v0 (x, y) \
+(SchemeFunctionType(arity=1, return_type=SchemeObjectType()),\
+ SchemeFunctionType(arity=2, return_type=SchemeObjectType()))
+  return v1
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_eq_specialization_different_types(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            _EQUAL_CODE,
+            param_types={
+                sexp.SSym('x'): scheme_types.SchemeBool,
+                sexp.SSym('y'): scheme_types.SchemeSym,
+            }
+        )
+
+        expected = '''
+function (? x y) entry=bb0
+bb0:
+  return 'False
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+
+_EQUAL_CODE = '''
+    (define (equal x y)
+        (if (not (symbol= (typeof x) (typeof y)))
+            false
+            (if (symbol? x)
+                (symbol= x y)
+                (if (number? x)
+                    (number= x y)
+                    (if (vector? x)
+                        (vector= x y)
+                        (pointer= x y)
+                    )
+                )
+            )
+        )
+    )'''

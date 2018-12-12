@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, cast
 
 import bytecode
+import scheme_types
 import sexp
 from errors import EnvBindingNotFound
 from find_tail_calls import TailCallData
@@ -18,9 +19,18 @@ ARITY_TRAP = bytecode.BasicBlock(
 
 class FunctionEmitter(Visitor):
     def __init__(self, global_env: Dict[sexp.SSym, sexp.Value],
-                 tail_calls: Optional[List[TailCallData]] = None) -> None:
+                 tail_calls: Optional[List[TailCallData]] = None,
+                 expr_types: Optional[scheme_types.FunctionTypeAnalyzer] = None
+                 ) -> None:
+        self._emitted_func: Optional[bytecode.Function] = None
         self.global_env = global_env
         self._tail_calls = tail_calls
+
+        self._expr_types = expr_types
+
+    def get_emitted_func(self) -> bytecode.Function:
+        assert self._emitted_func is not None
+        return self._emitted_func
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         local_env: Dict[sexp.SSym, bytecode.Var] = {}
@@ -38,14 +48,16 @@ class FunctionEmitter(Visitor):
         emitter = ExpressionEmitter(
             start_block, bb_names, var_names, local_env, self.global_env,
             function_entrypoint=start_block,
-            tail_calls=self._tail_calls)
+            tail_calls=self._tail_calls,
+            expr_types=self._expr_types)
         for expr in body_exprs[:-1]:
             emitter.visit(expr)
             emitter = ExpressionEmitter(
                 emitter.end_block, bb_names, var_names,
                 local_env, self.global_env,
                 function_entrypoint=start_block,
-                tail_calls=self._tail_calls)
+                tail_calls=self._tail_calls,
+                expr_types=self._expr_types)
 
         emitter.visit(body_exprs[-1])
 
@@ -57,15 +69,10 @@ class FunctionEmitter(Visitor):
             start_block
         )
 
-        func.code = emitted_func
-        assert func.name not in self.global_env, (
-            f"Duplicate function name: {func.name}")
-        self.global_env[func.name] = func
+        self._emitted_func = emitted_func
 
 
 class ExpressionEmitter(Visitor):
-    result: bytecode.Parameter
-
     def __init__(self, parent_block: bytecode.BasicBlock,
                  bb_names: Iterator[str],
                  var_names: Iterator[str],
@@ -74,7 +81,9 @@ class ExpressionEmitter(Visitor):
                  *,
                  function_entrypoint: Optional[bytecode.BasicBlock] = None,
                  quoted: bool = False,
-                 tail_calls: Optional[List[TailCallData]] = None) -> None:
+                 tail_calls: Optional[List[TailCallData]] = None,
+                 expr_types: Optional[scheme_types.FunctionTypeAnalyzer] = None
+                 ) -> None:
         self.parent_block = parent_block
         self.end_block = parent_block
         self.bb_names = bb_names
@@ -85,13 +94,32 @@ class ExpressionEmitter(Visitor):
         self._function_entrypoint = function_entrypoint
         self.quoted = quoted
         self._tail_calls = tail_calls
+        self._expr_types = expr_types
+
+        self._result: Optional[bytecode.Parameter] = None
+
+    @property
+    def result(self) -> bytecode.Parameter:
+        assert self._result is not None, 'ExpressionEmitter has no result'
+        return self._result
+
+    @result.setter
+    def result(self, val: bytecode.Parameter) -> None:
+        self._result = val
 
     def visit_SFunction(self, func: sexp.SFunction) -> None:
         assert func.is_lambda, 'Nested named functions not supported'
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
-        func_emitter = FunctionEmitter(self.global_env)
-        func_emitter.visit(func)
+        # Don't re-emit lambdas defined in a function we're specializing
+        if not self._expr_types:
+            func_emitter = FunctionEmitter(self.global_env)
+            func_emitter.visit(func)
+            func.code = func_emitter.get_emitted_func()
+
+            assert func.name not in self.global_env, (
+                f"Duplicate function name: {func.name}")
+            self.global_env[func.name] = func
 
         lambda_var = bytecode.Var(next(self.var_names))
         lookup_lambda_instr = bytecode.LookupInst(
@@ -103,11 +131,30 @@ class ExpressionEmitter(Visitor):
     def visit_SConditional(self, conditional: sexp.SConditional) -> None:
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
+        if (self._expr_types is not None
+                and self._expr_types.expr_value_known(conditional.test)):
+            test_val = self._expr_types.get_expr_value(conditional.test)
+            assert isinstance(test_val, sexp.SBool)
+            branch_to_emit = (conditional.then_expr if test_val.value
+                              else conditional.else_expr)
+
+            emitter = ExpressionEmitter(
+                self.parent_block, self.bb_names, self.var_names,
+                self.local_env, self.global_env,
+                function_entrypoint=self._function_entrypoint,
+                tail_calls=self._tail_calls,
+                expr_types=self._expr_types)
+            emitter.visit(branch_to_emit)
+
+            self.result = emitter.result
+            return
+
         test_emitter = ExpressionEmitter(
             self.parent_block, self.bb_names, self.var_names,
             self.local_env, self.global_env,
             function_entrypoint=self._function_entrypoint,
-            tail_calls=self._tail_calls)
+            tail_calls=self._tail_calls,
+            expr_types=self._expr_types)
         test_emitter.visit(conditional.test)
 
         then_block = bytecode.BasicBlock(next(self.bb_names))
@@ -125,7 +172,8 @@ class ExpressionEmitter(Visitor):
             then_block, self.bb_names, self.var_names,
             self.local_env, self.global_env,
             function_entrypoint=self._function_entrypoint,
-            tail_calls=self._tail_calls)
+            tail_calls=self._tail_calls,
+            expr_types=self._expr_types)
         then_emitter.visit(conditional.then_expr)
 
         then_result_instr = bytecode.CopyInst(result_var, then_emitter.result)
@@ -135,7 +183,8 @@ class ExpressionEmitter(Visitor):
             else_block, self.bb_names, self.var_names,
             self.local_env, self.global_env,
             function_entrypoint=self._function_entrypoint,
-            tail_calls=self._tail_calls)
+            tail_calls=self._tail_calls,
+            expr_types=self._expr_types)
         else_emitter.visit(conditional.else_expr)
 
         else_result_instr = bytecode.CopyInst(result_var, else_emitter.result)
@@ -178,7 +227,8 @@ class ExpressionEmitter(Visitor):
                 parent_block, self.bb_names, self.var_names,
                 self.local_env, self.global_env,
                 function_entrypoint=self._function_entrypoint,
-                tail_calls=self._tail_calls)
+                tail_calls=self._tail_calls,
+                expr_types=self._expr_types)
             expr_emitter.visit(expr)
             parent_block = expr_emitter.end_block
 
@@ -214,7 +264,8 @@ class ExpressionEmitter(Visitor):
                 self.local_env, self.global_env,
                 quoted=True,
                 function_entrypoint=self._function_entrypoint,
-                tail_calls=self._tail_calls)
+                tail_calls=self._tail_calls,
+                expr_types=self._expr_types)
             expr_emitter.visit(expr)
 
             store_car = bytecode.StoreInst(
@@ -233,25 +284,191 @@ class ExpressionEmitter(Visitor):
     def visit_SCall(self, call: sexp.SCall) -> None:
         assert not self.quoted, 'Non-primitives in quoted list unsupported'
 
-        is_tail_call = (self._tail_calls is not None
-                        and TailCallData(call) in self._tail_calls)
+        if self._is_true_assertion(call):
+            self.result = bytecode.NumLit(sexp.SNum(0))
+            return
 
-        if not is_tail_call:
-            func_expr_emitter = ExpressionEmitter(
-                self.parent_block, self.bb_names, self.var_names,
-                self.local_env, self.global_env,
-                function_entrypoint=self._function_entrypoint,
-                tail_calls=self._tail_calls)
+        tail_call_data = self._get_tail_call_data(call)
+        is_known_function = self._is_known_function(call)
+        arity_known_correct = self._arity_known_correct(
+            call, is_known_function, tail_call_data)
+        tail_call_args_compatible = self._tail_call_args_compatible(
+            call, arity_known_correct, tail_call_data)
+
+        func_to_call = self._get_func_to_call(
+            call, is_known_function,
+            arity_known_correct, tail_call_data, tail_call_args_compatible)
+
+        args = self._emit_args(call)
+
+        if tail_call_data is not None and func_to_call is None:
+            for arg, param in zip(args, tail_call_data.func_params):
+                local_var = self.local_env[param]
+                if arg != local_var:
+                    self.end_block.add_inst(bytecode.CopyInst(local_var, arg))
+
+            assert self._function_entrypoint is not None
+            self.end_block.add_inst(
+                bytecode.JmpInst(self._function_entrypoint))
+
+            # We need a placeholder result since we're jumping back
+            # to the beginning of the function
+            self.result = bytecode.NumLit(sexp.SNum(0))
+        else:
+            assert func_to_call is not None
+            call_result_var = bytecode.Var(next(self.var_names))
+            call_instr = bytecode.CallInst(
+                call_result_var, func_to_call, args,
+                specialization=self._get_arg_types(call))
+
+            self.end_block.add_inst(call_instr)
+            self.result = call_result_var
+
+    def _is_true_assertion(self, call: sexp.SCall) -> bool:
+        if self._expr_types is None:
+            return False
+
+        if call.func != sexp.SSym('assert') or len(call.args) != 1:
+            return False
+
+        call_arg = call.args[0]
+        if not self._expr_types.expr_value_known(call_arg):
+            return False
+
+        return self._expr_types.get_expr_value(call_arg) == sexp.SBool(True)
+
+    def _get_tail_call_data(self, call: sexp.SCall) -> Optional[TailCallData]:
+        if (self._tail_calls is None
+                or TailCallData(call) not in self._tail_calls):
+            return None
+
+        return self._tail_calls[self._tail_calls.index(TailCallData(call))]
+
+    def _is_known_function(self, call: sexp.SCall) -> bool:
+        return (self._expr_types is not None
+                and self._expr_types.expr_type_known(call.func)
+                and isinstance(self._expr_types.get_expr_type(call.func),
+                               scheme_types.SchemeFunctionType))
+
+    def _arity_known_correct(self, call: sexp.SCall,
+                             is_known_function: bool,
+                             tail_call_data: Optional[TailCallData]) -> bool:
+        if self._expr_types is None:
+            return False
+
+        if is_known_function:
+            func_type = cast(scheme_types.SchemeFunctionType,
+                             self._expr_types.get_expr_type(call.func))
+            return func_type.arity == len(call.args)
+
+        if tail_call_data is not None:
+            return len(tail_call_data.get_func().params) == len(call.args)
+
+        return False
+
+    def _tail_call_args_compatible(
+            self, call: sexp.SCall,
+            arity_known_correct: bool,
+            tail_call_data: Optional[TailCallData]) -> bool:
+        if (self._expr_types is None
+                or tail_call_data is None or not arity_known_correct):
+            return False
+
+        for arg_expr, param in zip(call.args, tail_call_data.func_params):
+            arg_type = self._expr_types.get_expr_type(arg_expr)
+            param_type = self._expr_types.get_expr_type(param)
+            if not (arg_type < param_type):
+                return False
+
+        return True
+
+    def _get_arg_types(
+            self, call: sexp.SCall) -> Optional[scheme_types.TypeTuple]:
+        if self._expr_types is None:
+            return None
+
+        return tuple(
+            (self._expr_types.get_expr_type(arg) for arg in call.args))
+
+    def _get_func_to_call(self, call: sexp.SCall,
+                          is_known_function: bool,
+                          arity_known_correct: bool,
+                          tail_call_data: Optional[TailCallData],
+                          call_args_compatible: bool
+                          ) -> Optional[bytecode.Parameter]:
+        if (tail_call_data is not None
+                and arity_known_correct
+                and call_args_compatible):
+            return None
+
+        func_expr_emitter = ExpressionEmitter(
+            self.parent_block, self.bb_names, self.var_names,
+            self.local_env, self.global_env,
+            function_entrypoint=self._function_entrypoint,
+            tail_calls=self._tail_calls,
+            expr_types=self._expr_types)
+
+        index_replacement_func = self._get_replacement_vector_index_func(call)
+        if index_replacement_func is not None:
+            func_expr_emitter.visit(index_replacement_func)
+        else:
             func_expr_emitter.visit(call.func)
 
+        self.end_block = func_expr_emitter.end_block
+
+        if not is_known_function:
             self._add_is_function_check(
-                func_expr_emitter.result, func_expr_emitter.end_block)
+                func_expr_emitter.result, self.end_block)
+
+        if not arity_known_correct:
             self._add_arity_check(
-                func_expr_emitter.result, func_expr_emitter.end_block,
+                func_expr_emitter.result, self.end_block,
                 len(call.args))
 
-            self.end_block = func_expr_emitter.end_block
+        return func_expr_emitter.result
 
+    def _get_replacement_vector_index_func(
+            self, call: sexp.SCall) -> Optional[sexp.SSym]:
+        if self._expr_types is None:
+            return None
+
+        if not isinstance(call.func, sexp.SSym):
+            return None
+
+        if call.func not in (sexp.SSym('vector-index'),
+                             sexp.SSym('vector-set!')):
+            return None
+
+        if len(call.args) < 2:
+            return None
+
+        if not self._expr_types.expr_type_known(call.args[0]):
+            return None
+
+        vec_arg_type = self._expr_types.get_expr_type(call.args[0])
+        if not isinstance(vec_arg_type, scheme_types.SchemeVectType):
+            return None
+
+        if vec_arg_type.length is None:
+            return None
+
+        index_arg = call.args[1]
+        if not self._expr_types.expr_value_known(index_arg):
+            return None
+
+        index = self._expr_types.get_expr_value(index_arg)
+        if not isinstance(index, sexp.SNum):
+            return None
+
+        in_bounds = index.value >= 0 and index.value < vec_arg_type.length
+        if not in_bounds:
+            return None
+
+        return (sexp.SSym('inst/load')
+                if call.func == sexp.SSym('vector-index')
+                else sexp.SSym('inst/store'))
+
+    def _emit_args(self, call: sexp.SCall) -> List[bytecode.Parameter]:
         args: List[bytecode.Parameter] = []
         arg_emitter: Optional[ExpressionEmitter] = None
         for arg_expr in call.args:
@@ -259,37 +476,44 @@ class ExpressionEmitter(Visitor):
                 self.end_block, self.bb_names, self.var_names,
                 self.local_env, self.global_env,
                 function_entrypoint=self._function_entrypoint,
-                tail_calls=self._tail_calls
+                tail_calls=self._tail_calls,
+                expr_types=self._expr_types
             )
             arg_emitter.visit(arg_expr)
             args.append(arg_emitter.result)
             self.end_block = arg_emitter.end_block
 
-        new_end_block = (arg_emitter.end_block if arg_emitter is not None
-                         else func_expr_emitter.end_block)
+        return args
 
-        if is_tail_call:
-            assert self._tail_calls is not None
-            tail_call_data = self._tail_calls[
-                self._tail_calls.index(TailCallData(call))]
-            for arg, param in zip(args, tail_call_data.func_params):
-                local_var = self.local_env[param]
-                if arg != local_var:
-                    new_end_block.add_inst(bytecode.CopyInst(local_var, arg))
+    # def _is_true_type_query(self, query: sexp.SExp) -> bool:
+    #     if self._expr_types is None:
+    #         return False
 
-            assert self._function_entrypoint is not None
-            new_end_block.add_inst(bytecode.JmpInst(self._function_entrypoint))
+    #     if not isinstance(query, sexp.SCall):
+    #         return False
 
-            # We need a placeholder result since we're jumping back
-            # to the beginning of the function
-            self.result = bytecode.NumLit(sexp.SNum(0))
-        else:
-            call_result_var = bytecode.Var(next(self.var_names))
-            call_instr = bytecode.CallInst(
-                call_result_var, func_expr_emitter.result, args)
+    #     if query.func not in self._TYPE_QUERIES:
+    #         return False
 
-            new_end_block.add_inst(call_instr)
-            self.result = call_result_var
+    #     if len(query.args) != 1:
+    #         return False
+
+    #     type_query_arg = query.args[0]
+    #     if not self._expr_types.expr_type_known(type_query_arg):
+    #         return False
+
+    #     return (self._expr_types.get_expr_type(type_query_arg)
+    #             < self._TYPE_QUERIES[cast(sexp.SSym, query.func)])
+
+    # _TYPE_QUERIES: Dict[sexp.SSym, scheme_types.SchemeObjectType] = {
+    #     sexp.SSym('number?'): scheme_types.SchemeNum,
+    #     sexp.SSym('symbol?'): scheme_types.SchemeSym,
+    #     sexp.SSym('vector?'): scheme_types.SchemeVectType(None),
+    #     sexp.SSym('function?'): scheme_types.SchemeFunctionType(None),
+    #     sexp.SSym('bool?'): scheme_types.SchemeBool,
+    #     sexp.SSym('pair?'): scheme_types.SchemeVectType(2),
+    #     sexp.SSym('nil?'): scheme_types.SchemeVectType(0),
+    # }
 
     def _add_is_function_check(
             self, function_expr: bytecode.Parameter,

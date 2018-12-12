@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import (TYPE_CHECKING, Dict, Iterator, List, Optional, Sequence,
-                    Tuple, Union, cast)
-
-import scheme_types
+from typing import (TYPE_CHECKING, Counter, Dict, Iterator, List, Optional,
+                    Sequence, Tuple, Union, cast)
 
 if TYPE_CHECKING:
     import bytecode
@@ -27,10 +25,6 @@ class Value(SExp):
     def address(self) -> int:
         ...
 
-    @abstractmethod
-    def scheme_type(self) -> scheme_types.SchemeObjectType:
-        ...
-
 
 @dataclass(frozen=True, order=True)
 class SNum(Value):
@@ -49,9 +43,6 @@ class SNum(Value):
     def address(self) -> int:
         return self.value
 
-    def scheme_type(self) -> scheme_types.SchemeNumType:
-        return scheme_types.SchemeNum
-
 
 @dataclass(frozen=True)
 class SBool(Value):
@@ -66,9 +57,6 @@ class SBool(Value):
 
     def address(self) -> int:
         return id(self.value)
-
-    def scheme_type(self) -> scheme_types.SchemeBoolType:
-        return scheme_types.SchemeBool
 
 
 @dataclass(frozen=True)
@@ -87,9 +75,6 @@ class SSym(Value):
 
     def address(self) -> int:
         return id(self.name)
-
-    def scheme_type(self) -> scheme_types.SchemeSymType:
-        return scheme_types.SchemeSym
 
 
 @dataclass(frozen=True)
@@ -116,9 +101,6 @@ class SVect(Value):
 
     def address(self) -> int:
         return id(self.items)
-
-    def scheme_type(self) -> scheme_types.SchemeVectType:
-        return scheme_types.SchemeVectType(len(self.items))
 
 
 @dataclass(frozen=True)
@@ -246,6 +228,8 @@ class SFunction(Value):
     code: Optional[bytecode.Function] = None
     is_lambda: bool = False
 
+    calls: Counter[TypeTuple] = field(default_factory=Counter)
+
     specializations: Dict[TypeTuple, bytecode.Function] = \
         field(default_factory=dict)
 
@@ -254,9 +238,6 @@ class SFunction(Value):
 
     def address(self) -> int:
         return id(self.code)
-
-    def scheme_type(self) -> scheme_types.SchemeFunctionType:
-        return scheme_types.SchemeFunctionType(len(self.params))
 
 
 @dataclass(frozen=True)
@@ -270,6 +251,11 @@ class SConditional(SExp):
     test: SExp
     then_expr: SExp
     else_expr: SExp
+
+
+@dataclass(frozen=True)
+class SBegin(SExp):
+    exprs: List[SExp]
 
 
 def parse(x: str) -> List[SExp]:
@@ -317,6 +303,10 @@ def parse(x: str) -> List[SExp]:
             parsed_first, tokens = parse(tokens)
             if parsed_first == SSym('if'):
                 return parse_conditional(tokens)
+
+            if parsed_first == SSym('begin'):
+                body, tokens = read_list_tail(tokens)
+                return SBegin(list(body)), tokens[1:]
 
             if parsed_first == SSym('define'):
                 return parse_define(tokens)
