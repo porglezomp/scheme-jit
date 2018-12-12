@@ -18,7 +18,7 @@ def main() -> None:
             prog_text = f.read()
 
     env = bytecode.EvalEnv(optimize_tail_calls=args.tail_calls,
-                           naive_jit=args.naive_jit,
+                           jit=args.jit,
                            bytecode_jit=args.bytecode_jit,
                            print_specializations=args.print_specializations,
                            print_optimizations=args.print_optimizations)
@@ -77,7 +77,7 @@ def parse_args() -> argparse.Namespace:
         '-a', '--all-stats', action='store_true',
         help="print stats for every instruction of every function")
     parser.add_argument(
-        '-n', '--naive-jit', action='store_true',
+        '-j', '--jit', action='store_true',
         help="optimize at the AST level")
     parser.add_argument(
         '-b', '--bytecode-jit', action='store_true',

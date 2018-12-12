@@ -260,7 +260,7 @@ class EvalEnv:
                  local_env: Optional[Dict[Var, Value]] = None,
                  global_env: Optional[Dict[SSym, Value]] = None,
                  optimize_tail_calls: bool = False,
-                 naive_jit: bool = False,
+                 jit: bool = False,
                  bytecode_jit: bool = False,
                  print_specializations: bool = False,
                  print_optimizations: bool = False):
@@ -275,7 +275,7 @@ class EvalEnv:
         self.stats = Stats()
 
         self.optimize_tail_calls = optimize_tail_calls
-        self.naive_jit = naive_jit
+        self.jit = jit
         self.bytecode_jit = bytecode_jit
         self.print_specializations = print_specializations
         self.print_optimizations = print_optimizations
@@ -284,7 +284,7 @@ class EvalEnv:
         env = EvalEnv(
             {},
             self._global_env,
-            naive_jit=self.naive_jit,
+            jit=self.jit,
             bytecode_jit=self.bytecode_jit,
             print_specializations=self.print_specializations)
         env.stats = self.stats
@@ -878,14 +878,14 @@ class CallInst(Inst):
                                  func: sexp.SFunction,
                                  func_code: Function,
                                  type_tuple: TypeTuple) -> None:
-        if not (env.naive_jit or env.bytecode_jit):
+        if not (env.jit or env.bytecode_jit):
             return
         if env.print_specializations:
             type_names = ', '.join(str(s) for s in type_tuple)
             print(f"Specializing: {func.name} ({type_names})")
 
         type_analyzer = None
-        if env.naive_jit:
+        if env.jit:
             param_types = dict(zip(func.params, type_tuple))
             type_analyzer = scheme_types.FunctionTypeAnalyzer(
                 param_types, env._global_env)
