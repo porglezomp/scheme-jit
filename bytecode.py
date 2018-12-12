@@ -120,7 +120,7 @@ class Inst(ABC):
         ...
 
     @abstractmethod
-    def constant_fold(self, values: ValueMap) -> Inst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> Inst:
         ...
 
     @abstractmethod
@@ -428,7 +428,7 @@ class BinopInst(Inst):
         self.lhs = self.lhs.freshen(prefix)
         self.rhs = self.rhs.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> BinopInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> BinopInst:
         return BinopInst(self.dest, self.op,
                          values.get_param(self.lhs),
                          values.get_param(self.rhs))
@@ -471,7 +471,7 @@ class TypeofInst(Inst):
         self.dest = self.dest.freshen(prefix)
         self.value = self.value.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> TypeofInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> TypeofInst:
         return TypeofInst(self.dest, values.get_param(self.value))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> TypeofInst:
@@ -506,7 +506,7 @@ class CopyInst(Inst):
         self.dest = self.dest.freshen(prefix)
         self.value = self.value.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> CopyInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> CopyInst:
         return CopyInst(self.dest, values.get_param(self.value))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> CopyInst:
@@ -547,7 +547,7 @@ class LookupInst(Inst):
         self.dest = self.dest.freshen(prefix)
         self.name = self.name.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> LookupInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> LookupInst:
         return LookupInst(self.dest, values.get_param(self.name))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> LookupInst:
@@ -592,7 +592,7 @@ class AllocInst(Inst):
         self.dest = self.dest.freshen(prefix)
         self.size = self.size.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> AllocInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> AllocInst:
         return AllocInst(self.dest, values.get_param(self.size))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> AllocInst:
@@ -648,7 +648,7 @@ class LoadInst(Inst):
         self.addr = self.addr.freshen(prefix)
         self.offset = self.offset.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> LoadInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> LoadInst:
         return LoadInst(self.dest,
                         values.get_param(self.addr),
                         values.get_param(self.offset))
@@ -703,7 +703,7 @@ class StoreInst(Inst):
         self.offset = self.offset.freshen(prefix)
         self.value = self.value.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> StoreInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> StoreInst:
         return StoreInst(self.addr,
                          values.get_param(self.offset),
                          values.get_param(self.value))
@@ -753,7 +753,7 @@ class LengthInst(Inst):
         self.dest = self.dest.freshen(prefix)
         self.addr = self.addr.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> LengthInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> LengthInst:
         return copy.copy(self)
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> LengthInst:
@@ -797,7 +797,7 @@ class ArityInst(Inst):
         self.dest = self.dest.freshen(prefix)
         self.func = self.func.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> ArityInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> ArityInst:
         return ArityInst(self.dest, values.get_param(self.func))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> ArityInst:
@@ -863,15 +863,27 @@ class CallInst(Inst):
         for i in range(len(self.args)):
             self.args[i] = self.args[i].freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> CallInst:
-        # @TODO: Improve the specialization
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> CallInst:
+        import optimization
+
+        def get_type(x: Parameter) -> SchemeObjectType:
+            val = values[x]
+            if val is not None:
+                return val.scheme_type()
+            return types[x]
+
+        specialization = tuple(get_type(arg) for arg in self.args)
+        func = values.get_param(self.func, allow_func=True)
+        if isinstance(func, FuncLit):
+            special = func.func.get_specialized(specialization)
+            if not optimization.should_inline(func.func.name, special):
+                func = self.func
         return CallInst(self.dest,
-                        values.get_param(self.func, allow_func=True),
+                        func,
                         [values.get_param(arg) for arg in self.args],
-                        self.specialization)
+                        specialization)
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> CallInst:
-        # @TODO: Improve the specialization
         return CallInst(self.dest,
                         get_value(values, self.func),
                         [get_value(values, arg) for arg in self.args],
@@ -909,7 +921,7 @@ class JmpInst(Inst):
     def freshen(self, prefix: str) -> None:
         pass
 
-    def constant_fold(self, values: ValueMap) -> JmpInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> JmpInst:
         return copy.copy(self)
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> JmpInst:
@@ -952,7 +964,7 @@ class BrInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.cond = self.cond.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> BrInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> BrInst:
         return BrInst(values.get_param(self.cond), self.target)
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> BrInst:
@@ -995,7 +1007,7 @@ class BrnInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.cond = self.cond.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> BrnInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> BrnInst:
         return BrnInst(values.get_param(self.cond), self.target)
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> BrnInst:
@@ -1027,7 +1039,7 @@ class ReturnInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.ret = self.ret.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> ReturnInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> ReturnInst:
         return ReturnInst(values.get_param(self.ret))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> ReturnInst:
@@ -1059,7 +1071,7 @@ class TrapInst(Inst):
     def freshen(self, prefix: str) -> None:
         pass
 
-    def constant_fold(self, values: ValueMap) -> TrapInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> TrapInst:
         return copy.copy(self)
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> TrapInst:
@@ -1091,7 +1103,7 @@ class TraceInst(Inst):
     def freshen(self, prefix: str) -> None:
         self.value = self.value.freshen(prefix)
 
-    def constant_fold(self, values: ValueMap) -> TraceInst:
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> TraceInst:
         return TraceInst(values.get_param(self.value))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> TraceInst:
@@ -1121,7 +1133,8 @@ class BreakpointInst(Inst):
     def freshen(self, prefix: str) -> None:
         pass
 
-    def constant_fold(self, values: ValueMap) -> BreakpointInst:
+    def constant_fold(self, types: TypeMap,
+                      values: ValueMap) -> BreakpointInst:
         return copy.copy(self)
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> BreakpointInst:

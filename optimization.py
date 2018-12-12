@@ -125,8 +125,8 @@ class FunctionOptimizer:
         for block in self.func.blocks():
             info_map = self.info[id(block)]
             for i, inst in enumerate(block.instructions):
-                _, values = info_map[i]
-                block.instructions[i] = inst.constant_fold(values)
+                types, values = info_map[i]
+                block.instructions[i] = inst.constant_fold(types, values)
 
     def find_lookups(self) -> Iterator[Tuple[BasicBlock, int, LookupInst]]:
         for block in self.func.blocks():
@@ -180,24 +180,9 @@ class FunctionOptimizer:
                 inst.freshen(prefix)
         return func
 
-    def should_inline(self, name: SSym) -> bool:
-        # @TODO: An actual inlining heuristic!
-        SHOULD_INLINE = (
-            'trap', 'trace', 'breakpoint', 'assert', 'typeof',
-            'number?', 'symbol?', 'vector?', 'function?', 'bool?',
-            'pair?', 'nil?',
-            'not',
-            '+', '-', '*', '/', '%',
-            'pointer=', 'symbol=', 'number=', 'number<',
-            'vector-length', 'vector-index', 'vector-set!',
-            '<', '!=', '>', '<=', '>=',
-            'cons', 'car', 'cdr',
-        )
-        return name.name.startswith('inst/') or name.name in SHOULD_INLINE
-
     def seed_inlining(self, env: EvalEnv) -> None:
         for b, i, l in self.find_lookups():
-            if isinstance(l.name, SymLit) and self.should_inline(l.name.value):
+            if isinstance(l.name, SymLit):
                 func = env._global_env.get(l.name.value, None)
                 if func is None:
                     # @TODO: A scheme that will allow us to recompile
@@ -342,3 +327,19 @@ class FunctionOptimizer:
         self.legalize()
         self.copy_propagate()
         self.remove_dead_code()
+
+
+def should_inline(name: SSym, func: Function) -> bool:
+    # @TODO: An actual inlining heuristic!
+    SHOULD_INLINE = (
+        'trap', 'trace', 'breakpoint', 'assert', 'typeof',
+        'number?', 'symbol?', 'vector?', 'function?', 'bool?',
+        'pair?', 'nil?',
+        'not',
+        '+', '-', '*', '/', '%',
+        'pointer=', 'symbol=', 'number=', 'number<',
+        'vector-length', 'vector-index', 'vector-set!',
+        '<', '!=', '>', '<=', '>=',
+        'cons', 'car', 'cdr',
+    )
+    return name.name.startswith('inst/') or name.name in SHOULD_INLINE
