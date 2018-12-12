@@ -168,6 +168,8 @@ def add_builtins(env: EvalEnv, optimize: bool = False) -> None:
         _add_func_to_env(definition, emitter, env)
         assert definition.code
         if optimize:
+            if env.print_optimizations:
+                print(f"Optimizing builtin {definition.name}...")
             opt = FunctionOptimizer(definition.code)
             opt.optimize(env)
 
@@ -220,6 +222,8 @@ def add_prelude(env: EvalEnv, optimize: bool = False) -> None:
         _add_func_to_env(definition, emitter, env)
         assert definition.code
         if optimize:
+            if env.print_optimizations:
+                print(f"Optimizing prelude {definition.name}...")
             opt = FunctionOptimizer(definition.code)
             opt.optimize(env)
 
@@ -241,6 +245,8 @@ def run_code(env: EvalEnv, code: SExp) -> Value:
         _add_func_to_env(code, emitter, env)
         assert code.code
         if env.bytecode_jit:
+            if env.print_optimizations:
+                print(f"Optimizing top-level function {code.name}...")
             opt = FunctionOptimizer(code.code)
             opt.optimize(env)
         return env._global_env[code.name]

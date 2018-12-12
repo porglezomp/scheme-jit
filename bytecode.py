@@ -262,7 +262,8 @@ class EvalEnv:
                  optimize_tail_calls: bool = False,
                  naive_jit: bool = False,
                  bytecode_jit: bool = False,
-                 print_specializations: bool = True):
+                 print_specializations: bool = False,
+                 print_optimizations: bool = False):
         if local_env is None:
             self._local_env = {}
         else:
@@ -277,6 +278,7 @@ class EvalEnv:
         self.naive_jit = naive_jit
         self.bytecode_jit = bytecode_jit
         self.print_specializations = print_specializations
+        self.print_optimizations = print_optimizations
 
     def new_local(self) -> EvalEnv:
         env = EvalEnv(
@@ -876,30 +878,45 @@ class CallInst(Inst):
                                  func: sexp.SFunction,
                                  func_code: Function,
                                  type_tuple: TypeTuple) -> None:
+        if not (env.naive_jit or env.bytecode_jit):
+            return
+        if env.print_specializations:
+            type_names = ', '.join(str(s) for s in type_tuple)
+            print(f"Specializing: {func.name} ({type_names})")
+
+        type_analyzer = None
         if env.naive_jit:
-            if env.print_specializations:
-                print('Specializing:', func.name, type_tuple)
             param_types = dict(zip(func.params, type_tuple))
             type_analyzer = scheme_types.FunctionTypeAnalyzer(
                 param_types, env._global_env)
             type_analyzer.visit(func)
 
-            tail_calls = None
-            if env.optimize_tail_calls:
-                tail_call_finder = find_tail_calls.TailCallFinder()
-                tail_call_finder.visit(func)
-                tail_calls = tail_call_finder.tail_calls
+        tail_calls = None
+        if env.optimize_tail_calls:
+            tail_call_finder = find_tail_calls.TailCallFinder()
+            tail_call_finder.visit(func)
+            tail_calls = tail_call_finder.tail_calls
 
-            from emit_IR import FunctionEmitter
-            emitter = FunctionEmitter(env._global_env,
-                                      tail_calls=tail_calls,
-                                      expr_types=type_analyzer)
-            emitter.visit(func)
+        from emit_IR import FunctionEmitter
+        emitter = FunctionEmitter(env._global_env,
+                                  tail_calls=tail_calls,
+                                  expr_types=type_analyzer)
+        emitter.visit(func)
+        emitted_func = emitter.get_emitted_func()
+        func.specializations[type_tuple] = emitted_func
 
-            emitted_func = emitter.get_emitted_func()
-            func.specializations[type_tuple] = emitted_func
-        elif env.bytecode_jit:
-            raise NotImplementedError
+        if env.bytecode_jit:
+            self._optimize(env, func, type_tuple)
+
+    def _optimize(self, env: EvalEnv,
+                  func: sexp.SFunction, type_tuple: TypeTuple) -> None:
+        from optimization import FunctionOptimizer
+        if env.print_optimizations:
+            type_names = ', '.join(str(s) for s in type_tuple)
+            print(f"Optimizing {func.name} ({type_names})")
+        opt = FunctionOptimizer(func.get_specialized(type_tuple))
+        opt.specialization = type_tuple
+        opt.optimize(env)
 
     def __str__(self) -> str:
         args = ', '.join(str(arg) for arg in self.args)
@@ -1297,10 +1314,15 @@ class Function:
                 f" entry={self.start.name}\n"
                 + '\n\n'.join(str(b) for b in self.blocks()))
 
-    def format_stats(self, name: SSym, stats: Stats) -> str:
+    def format_stats(self, name: SSym, types: Optional[TypeTuple],
+                     stats: Stats) -> str:
         params = ''.join(' ' + x.name for x in self.params)
+        if types is not None:
+            spec = f" ({', '.join(str(t) for t in types)})"
+        else:
+            spec = ''
         return (f"function ({name}{params})"
-                f" entry={self.start.name}\n"
+                f" entry={self.start.name}{spec}\n"
                 + '\n\n'.join(b.format_stats(stats) for b in self.blocks()))
 
 
