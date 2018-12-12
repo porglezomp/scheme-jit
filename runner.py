@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 import bytecode
 import emit_IR
@@ -165,6 +165,7 @@ def add_builtins(env: EvalEnv, optimize: bool = False) -> None:
     for definition in code:
         assert isinstance(definition, SFunction)
         emitter.visit(definition)
+        _add_func_to_env(definition, emitter, env)
         assert definition.code
         if optimize:
             opt = FunctionOptimizer(definition.code)
@@ -216,6 +217,7 @@ def add_prelude(env: EvalEnv, optimize: bool = False) -> None:
     for definition in code:
         assert isinstance(definition, SFunction)
         emitter.visit(definition)
+        _add_func_to_env(definition, emitter, env)
         assert definition.code
         if optimize:
             opt = FunctionOptimizer(definition.code)
@@ -225,22 +227,20 @@ def add_prelude(env: EvalEnv, optimize: bool = False) -> None:
 eval_names = emit_IR.name_generator('__eval_expr')
 
 
-def run_code(env: EvalEnv, code: SExp,
-             optimize_tail_calls: bool = False,
-             optimize_bytecode: bool = False) -> Value:
+def run_code(env: EvalEnv, code: SExp) -> Value:
     """Run a piece of code in an environment, returning its result."""
-    emitter = FunctionEmitter(env._global_env)
     if isinstance(code, sexp.SFunction):
         tail_calls = None
-        if optimize_tail_calls:
+        if env.optimize_tail_calls:
             tail_call_finder = TailCallFinder()
             tail_call_finder.visit(code)
             tail_calls = tail_call_finder.tail_calls
 
         emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
         emitter.visit(code)
+        _add_func_to_env(code, emitter, env)
         assert code.code
-        if optimize_bytecode:
+        if env.bytecode_jit:
             opt = FunctionOptimizer(code.code)
             opt.optimize(env)
         return env._global_env[code.name]
@@ -250,18 +250,22 @@ def run_code(env: EvalEnv, code: SExp,
             name, [], sexp.to_slist([code]), is_lambda=True)
         emitter = FunctionEmitter(env._global_env)
         emitter.visit(code)
-        function = env._global_env[name]
-        assert isinstance(function, sexp.SFunction)
-        assert function.code is not None
-        gen = bytecode.ResultGenerator(function.code.run(env))
+        function = emitter.get_emitted_func()
+        gen = bytecode.ResultGenerator(function.run(env))
         gen.run()
         assert gen.value is not None
         return gen.value
 
 
-def run(env: EvalEnv, text: str,
-        optimize_tail_calls: bool = False,
-        optimize_bytecode: bool = False) -> Value:
+def _add_func_to_env(func: sexp.SFunction, func_emitter: FunctionEmitter,
+                     env: EvalEnv) -> None:
+    func.code = func_emitter.get_emitted_func()
+    assert func.name not in env._global_env, (
+        f"Duplicate function name: {func.name}")
+    env._global_env[func.name] = func
+
+
+def run(env: EvalEnv, text: str) -> Value:
     """
     Run a piece of code in an environment, returning its result.
 
@@ -277,7 +281,5 @@ def run(env: EvalEnv, text: str,
     code = sexp.parse(text)
     result: Value = sexp.SVect([])
     for part in code:
-        result = run_code(env, part,
-                          optimize_tail_calls=optimize_tail_calls,
-                          optimize_bytecode=optimize_bytecode)
+        result = run_code(env, part)
     return result

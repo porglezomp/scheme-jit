@@ -2,8 +2,8 @@ import unittest
 from typing import List, Tuple
 
 import sexp
-from sexp import (Nil, Quote, SBool, SCall, SConditional, SExp, SFunction,
-                  SNum, SPair, SSym, SVect)
+from sexp import (Nil, Quote, SBegin, SBool, SCall, SConditional, SExp,
+                  SFunction, SNum, SPair, SSym, SVect)
 from visitor import Visitor
 
 
@@ -147,6 +147,23 @@ class VisitorTestCase(unittest.TestCase):
         counter.visit(prog)
         self.assertEqual(len(expected), counter.num_exprs)
 
+    def test_visit_begin(self) -> None:
+        prog = sexp.parse('(begin egg 42)')
+        recorder = TraversalRecorder()
+        recorder.visit(prog)
+
+        expected = [
+            'SBegin',
+            'SSym',
+            'SNum',
+        ]
+
+        self.assertEqual(expected, recorder.exprs)
+
+        counter = ExpressionCounter()
+        counter.visit(prog)
+        self.assertEqual(len(expected), counter.num_exprs)
+
 
 class TraversalRecorder(Visitor):
     def __init__(self) -> None:
@@ -175,6 +192,10 @@ class TraversalRecorder(Visitor):
     def visit_Quote(self, quote: Quote) -> None:
         self.exprs.append('Quote')
         super().visit_Quote(quote)
+
+    def visit_SBegin(self, begin: SBegin) -> None:
+        self.exprs.append('SBegin')
+        super().visit_SBegin(begin)
 
     def visit_SFunction(self, func: SFunction) -> None:
         self.exprs.append('SFunction')

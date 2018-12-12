@@ -1,6 +1,8 @@
 import unittest
 from typing import List
 
+import emit_IR
+import scheme_types
 import sexp
 from find_tail_calls import TailCallData, TailCallFinder
 
@@ -21,6 +23,14 @@ class TailCallFinderTestCase(unittest.TestCase):
     def test_tail_call_in_conditional_then(self) -> None:
         prog = sexp.parse(
             '(define (vacuous-tail) (if true (vacuous-tail) false))')
+        self.finder.visit(prog)
+        self.assertEqual(1, len(self.finder.tail_calls))
+        self.assert_symbol_in_tail_calls(
+            sexp.SSym('vacuous-tail'), self.finder.tail_calls)
+
+    def test_tail_call_in_begin(self) -> None:
+        prog = sexp.parse(
+            '(define (vacuous-tail) (begin 42 43 (vacuous-tail)))')
         self.finder.visit(prog)
         self.assertEqual(1, len(self.finder.tail_calls))
         self.assert_symbol_in_tail_calls(

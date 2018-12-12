@@ -17,13 +17,14 @@ def main() -> None:
         with open(args.filename) as f:
             prog_text = f.read()
 
-    env = bytecode.EvalEnv()
+    env = bytecode.EvalEnv(optimize_tail_calls=args.tail_calls,
+                           naive_jit=args.naive_jit,
+                           bytecode_jit=args.bytecode_jit,
+                           print_specializations=args.print_specializations)
     runner.add_intrinsics(env)
     runner.add_builtins(env)
     runner.add_prelude(env)
-    print(runner.run(env, prog_text,
-                     optimize_tail_calls=args.tail_calls,
-                     optimize_bytecode=args.bytecode_jit))
+    print(runner.run(env, prog_text))
 
     if args.stats:
         print('-----')
@@ -50,12 +51,20 @@ def parse_args() -> argparse.Namespace:
         '-s', '--stats', action='store_true',
         help="print execution stats")
     parser.add_argument(
+        '-n', '--naive-jit', action='store_true',
+        help="optimize at the AST level"
+    )
+    parser.add_argument(
         '-b', '--bytecode-jit', action='store_true',
-        help="optimize at the bytecode level"
+        help="optimize at the bytecode level",
     )
     parser.add_argument(
         '-t', '--tail-calls', action='store_true',
-        help="do tail call optimization"
+        help="do tail call optimization",
+    )
+    parser.add_argument(
+        '-p', '--print-specializations', action='store_true',
+        help="log when specializations are created",
     )
 
     return parser.parse_args()

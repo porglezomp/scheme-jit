@@ -9,6 +9,11 @@ from visitor import Visitor
 class TailCallData:
     call: sexp.SCall
     func_params: List[sexp.SSym] = field(default_factory=list)
+    func: Optional[sexp.SFunction] = None
+
+    def get_func(self) -> sexp.SFunction:
+        assert self.func is not None, 'func not set on TailCallData'
+        return self.func
 
     def __hash__(self) -> int:
         return hash(id(self.call))
@@ -51,4 +56,10 @@ class TailCallFinder(Visitor):
             return
 
         self._tail_calls.append(
-            TailCallData(call, list(self._current_function.params)))
+            TailCallData(call,
+                         list(self._current_function.params),
+                         self._current_function))
+
+    def visit_SBegin(self, begin: sexp.SBegin) -> None:
+        assert len(begin.exprs) != 0, 'begin bodies must not be empty'
+        self.visit(begin.exprs[-1])

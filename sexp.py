@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import (TYPE_CHECKING, Dict, Iterator, List, Optional, Sequence,
-                    Tuple, Union, cast)
+from typing import (TYPE_CHECKING, Counter, Dict, Iterator, List, Optional,
+                    Sequence, Tuple, Union, cast)
 
 import bytecode
-import scheme_types
 
 if TYPE_CHECKING:
     import bytecode
@@ -20,17 +19,12 @@ class SExp:
 
 class Value(SExp):
     """An s-expression that's a valid run-time object."""
-    def type_name(self) -> SSym:
-        result = self.scheme_type().symbol()
-        assert result
-        return result
-
     @abstractmethod
-    def address(self) -> int:
+    def type_name(self) -> SSym:
         ...
 
     @abstractmethod
-    def scheme_type(self) -> scheme_types.SchemeObjectType:
+    def address(self) -> int:
         ...
 
     @abstractmethod
@@ -43,6 +37,9 @@ class SNum(Value):
     """A lisp number"""
     value: int
 
+    def type_name(self) -> SSym:
+        return SSym('number')
+
     def __str__(self) -> str:
         return str(self.value)
 
@@ -51,9 +48,6 @@ class SNum(Value):
 
     def address(self) -> int:
         return self.value
-
-    def scheme_type(self) -> scheme_types.SchemeNumType:
-        return scheme_types.SchemeNum
 
     def to_param(self) -> bytecode.NumLit:
         return bytecode.NumLit(self)
@@ -64,14 +58,14 @@ class SBool(Value):
     """A lisp boolean"""
     value: bool
 
+    def type_name(self) -> SSym:
+        return SSym('bool')
+
     def __str__(self) -> str:
         return str(self.value)
 
     def address(self) -> int:
         return id(self.value)
-
-    def scheme_type(self) -> scheme_types.SchemeBoolType:
-        return scheme_types.SchemeBool
 
     def to_param(self) -> bytecode.BoolLit:
         return bytecode.BoolLit(self)
@@ -82,6 +76,9 @@ class SSym(Value):
     """A lisp symbol"""
     name: str
 
+    def type_name(self) -> SSym:
+        return SSym('symbol')
+
     def __str__(self) -> str:
         return self.name
 
@@ -90,9 +87,6 @@ class SSym(Value):
 
     def address(self) -> int:
         return id(self.name)
-
-    def scheme_type(self) -> scheme_types.SchemeSymType:
-        return scheme_types.SchemeSym
 
     def to_param(self) -> bytecode.SymLit:
         return bytecode.SymLit(self)
@@ -114,14 +108,14 @@ class SVect(Value):
     """
     items: List[SExp]
 
+    def type_name(self) -> SSym:
+        return SSym('vector')
+
     def __str__(self) -> str:
         return f"[{' '.join(str(i) for i in self.items)}]"
 
     def address(self) -> int:
         return id(self.items)
-
-    def scheme_type(self) -> scheme_types.SchemeVectType:
-        return scheme_types.SchemeVectType(len(self.items))
 
     def to_param(self) -> Optional[bytecode.Parameter]:
         return None
@@ -252,14 +246,16 @@ class SFunction(Value):
     code: Optional[bytecode.Function] = None
     is_lambda: bool = False
 
+    calls: Counter[TypeTuple] = field(default_factory=Counter)
+
     specializations: Dict[TypeTuple, bytecode.Function] = \
         field(default_factory=dict)
 
+    def type_name(self) -> SSym:
+        return SSym('function')
+
     def address(self) -> int:
         return id(self.code)
-
-    def scheme_type(self) -> scheme_types.SchemeFunctionType:
-        return scheme_types.SchemeFunctionType(len(self.params))
 
     def __str__(self) -> str:
         params = ''.join(' ' + p.name for p in self.params)
@@ -286,6 +282,11 @@ class SConditional(SExp):
     test: SExp
     then_expr: SExp
     else_expr: SExp
+
+
+@dataclass(frozen=True)
+class SBegin(SExp):
+    exprs: List[SExp]
 
 
 def parse(x: str) -> List[SExp]:
@@ -333,6 +334,10 @@ def parse(x: str) -> List[SExp]:
             parsed_first, tokens = parse(tokens)
             if parsed_first == SSym('if'):
                 return parse_conditional(tokens)
+
+            if parsed_first == SSym('begin'):
+                body, tokens = read_list_tail(tokens)
+                return SBegin(list(body)), tokens[1:]
 
             if parsed_first == SSym('define'):
                 return parse_define(tokens)
