@@ -372,7 +372,6 @@ class ExpressionEmitter(Visitor):
 
     def _tail_call_args_compatible(
             self, call: sexp.SCall,
-            # arity_known_correct: bool,
             tail_call_data: Optional[TailCallData]) -> bool:
         if tail_call_data is None:
             return False
