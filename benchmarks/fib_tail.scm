@@ -22,3 +22,4 @@
 (trace (fib-tail 7))
 (trace (fib-tail 8))
 (trace (fib-tail 9))
+'done

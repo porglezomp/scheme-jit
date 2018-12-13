@@ -18,3 +18,4 @@
 (trace (fib 7))
 (trace (fib 8))
 (trace (fib 9))
+'done

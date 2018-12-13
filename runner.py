@@ -41,7 +41,7 @@ def add_intrinsics(eval_env: EvalEnv) -> None:
         SSym('inst/trap'), [], None,
         bytecode.TrapInst("(trap)"))
     env[SSym('inst/trace')] = inst_function(
-        SSym('inst/trace'), [Var('x')], bytecode.NumLit(sexp.SNum(0)),
+        SSym('inst/trace'), [Var('x')], Var('x'),
         bytecode.TraceInst(Var('x')))
     env[SSym('inst/display')] = inst_function(
         SSym('inst/display'), [Var('x')], bytecode.NumLit(sexp.SNum(0)),
@@ -212,6 +212,17 @@ def add_prelude(env: EvalEnv) -> None:
     (define (cons x l) [x l])
     (define (car l) (vector-index l 0))
     (define (cdr l) (vector-index l 1))
+
+    (define (length/recur l acc)
+      (if (nil? l)
+        acc
+        (length/recur (cdr l) (+ acc 1))))
+    (define (length l) (length/recur l 0))
+
+    (define (nth l n)
+      (if (<= n 0)
+        (car l)
+        (nth (cdr l) (- n 1))))
 
     (define (list/recur vec n end place)
       (assert (<= n end))
