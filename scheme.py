@@ -26,7 +26,17 @@ def main() -> None:
     runner.add_builtins(env)
     runner.add_prelude(env)
     print(runner.run(env, prog_text))
+    if args.machine_readable:
+        report_stats_json(args, env)
+    else:
+        report_stats(args, env)
 
+
+def report_stats_json(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
+    raise NotImplementedError
+
+
+def report_stats(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
     if args.function_stats:
         print('-----')
         for name, defn in env._global_env.items():
@@ -86,11 +96,17 @@ def parse_args() -> argparse.Namespace:
         '-t', '--tail-calls', action='store_true',
         help="do tail call optimization")
     parser.add_argument(
-        '-p', '--print-specializations', action='store_true',
+        '-S', '--print-specializations', action='store_true',
         help="log when specializations are created")
     parser.add_argument(
-        '-o', '--print-optimizations', action='store_true',
+        '-O', '--print-optimizations', action='store_true',
         help="log when optimizations are performed")
+    parser.add_argument(
+        '-o', '--output', nargs=1,
+        help="output the stats to a file")
+    parser.add_argument(
+        '-m', '--machine-readable', action='store_true',
+        help="output stats as json")
 
     return parser.parse_args()
 
