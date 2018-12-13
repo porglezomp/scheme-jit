@@ -78,16 +78,12 @@ class ValueMap:
                     result[key] = self[key]
         return result
 
-    def get_param(
-            self, key: Parameter, allow_func: bool = False,
-    ) ->Parameter:
+    def get_param(self, key: Parameter) ->Parameter:
         value = self[key]
         if value is None:
             return key
         param = value.to_param()
         if param is None:
-            return key
-        if not allow_func and isinstance(param, FuncLit):
             return key
         return param
 
@@ -116,7 +112,9 @@ class Inst(ABC):
         ...
 
     @abstractmethod
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap,
+    ) -> None:
         ...
 
     def successors(self) -> Iterable[BasicBlock]:
@@ -226,24 +224,6 @@ class BoolLit(Parameter):
         return f"{self.value}"
 
     def freshen(self, prefix: str) -> BoolLit:
-        return self
-
-
-@dataclass(frozen=True)
-class FuncLit(Parameter):
-    func: sexp.SFunction
-
-    def lookup_self(self, env: Dict[Var, Value]) -> Value:
-        return self.func
-
-    def lookup_self_type(
-            self, env: Dict[Var, SchemeObjectType]) -> SchemeObjectType:
-        return scheme_types.SchemeFunctionType(len(self.func.params))
-
-    def __str__(self) -> str:
-        return f"{self.func}"
-
-    def freshen(self, prefix: str) -> FuncLit:
         return self
 
 
@@ -385,7 +365,9 @@ class BinopInst(Inst):
             else:
                 raise ValueError(f"Unexpected op {self.op}")
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         # Type-based transfer function
         if self.op in (Binop.ADD, Binop.SUB, Binop.MUL, Binop.DIV, Binop.MOD):
             types[self.dest] = scheme_types.SchemeNum
@@ -478,13 +460,16 @@ class TypeofInst(Inst):
     def run(self, env: EvalEnv) -> None:
         env[self.dest] = env[self.value].type_name()
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         val = values[self.value]
+        ty = types[self.value]
         types[self.dest] = scheme_types.SchemeSym
         if val is not None:
             values[self.dest] = val.type_name()
         else:
-            values[self.dest] = types[self.value].symbol()
+            values[self.dest] = ty.symbol()
 
     def __str__(self) -> str:
         return f"{self.dest} = typeof {self.value}"
@@ -517,7 +502,9 @@ class CopyInst(Inst):
     def run(self, env: EvalEnv) -> None:
         env[self.dest] = env[self.value]
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         types[self.dest] = types[self.value]
         values[self.dest] = values[self.value]
 
@@ -556,11 +543,20 @@ class LookupInst(Inst):
         assert isinstance(value, Value)
         env[self.dest] = value
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
-        # We don't know anything about globals.
-        # @TODO: Know something about globals.
-        types[self.dest] = scheme_types.SchemeObject
-        values[self.dest] = None
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
+        name = values[self.name]
+        if isinstance(name, SSym):
+            func = env._global_env.get(name, None)
+        else:
+            func = None
+
+        values[self.dest] = func
+        if func is not None:
+            types[self.dest] = scheme_types.get_type(func)
+        else:
+            types[self.dest] = scheme_types.SchemeObject
 
     def __str__(self) -> str:
         return f"{self.dest} = lookup {self.name}"
@@ -595,7 +591,9 @@ class AllocInst(Inst):
         assert isinstance(size, SNum)
         env[self.dest] = SVect([sexp.Nil] * size.value)
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         size = values[self.size]
         types[self.dest] = scheme_types.SchemeVectType(None)
         if size is None:
@@ -645,7 +643,9 @@ class LoadInst(Inst):
         assert isinstance(value, Value)
         env[self.dest] = value
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         offset = values[self.offset]
         vect = values[self.addr]
         if offset is None or vect is None:
@@ -703,15 +703,20 @@ class StoreInst(Inst):
         assert index.value < len(vect.items)
         vect.items[index.value] = env[self.value]
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         vect = values[self.addr]
         offset = values[self.offset]
         value = values[self.value]
         if vect is None:
             # Disaster! We have to invalidate all vectors in values
+            to_invalidate = []
             for k, value in values.values.items():
                 if isinstance(value, SVect):
-                    values[k] = None
+                    to_invalidate.append(k)
+            for key in to_invalidate:
+                values[k] = None
         elif offset is None or value is None:
             values[self.addr] = None
         elif isinstance(offset, SNum) and isinstance(vect, SVect):
@@ -755,8 +760,10 @@ class LengthInst(Inst):
         assert isinstance(vect, SVect), vect
         env[self.dest] = SNum(len(vect.items))
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
-        ty = types[self.dest]
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
+        ty = types[self.addr]
         types[self.dest] = scheme_types.SchemeNum
         vect = values[self.addr]
         if vect is None:
@@ -776,10 +783,10 @@ class LengthInst(Inst):
         self.addr = self.addr.freshen(prefix)
 
     def constant_fold(self, types: TypeMap, values: ValueMap) -> LengthInst:
-        return copy.copy(self)
+        return LengthInst(self.dest, values.get_param(self.addr))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> LengthInst:
-        return copy.copy(self)
+        return LengthInst(self.dest, get_value(values, self.addr))
 
     def dests(self) -> List[Var]:
         return [self.dest]
@@ -801,7 +808,9 @@ class ArityInst(Inst):
         assert isinstance(func, sexp.SFunction), func
         env[self.dest] = SNum(len(func.params))
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         ty = types[self.func]
         val = values[self.func]
         types[self.dest] = scheme_types.SchemeNum
@@ -870,13 +879,14 @@ class CallInst(Inst):
         }
         if self.specialization and self.specialization in func.specializations:
             specialized = func.specializations[self.specialization]
-            env[self.dest] = yield from specialized.run(func_env)
         else:
             env.stats.specialization_dispatch[id(self)] += 1
             specialized = func.get_specialized(type_tuple)
-            env[self.dest] = yield from specialized.run(func_env)
+        env[self.dest] = yield from specialized.run(func_env)
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         types[self.dest] = scheme_types.SchemeObject
         values[self.dest] = None
 
@@ -948,11 +958,7 @@ class CallInst(Inst):
             return types[x]
 
         specialization = tuple(get_type(arg) for arg in self.args)
-        func = values.get_param(self.func, allow_func=True)
-        if isinstance(func, FuncLit):
-            special = func.func.get_specialized(specialization)
-            if not optimization.should_inline(func.func.name, special):
-                func = self.func
+        func = values.get_param(self.func)
         return CallInst(self.dest,
                         func,
                         [values.get_param(arg) for arg in self.args],
@@ -984,7 +990,9 @@ class JmpInst(Inst):
     def run(self, env: EvalEnv) -> BB:
         return self.target
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def successors(self) -> Iterable[BasicBlock]:
@@ -1027,7 +1035,9 @@ class BrInst(Inst):
             return self.target
         return None
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def successors(self) -> Iterable[BasicBlock]:
@@ -1070,7 +1080,9 @@ class BrnInst(Inst):
             return self.target
         return None
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def successors(self) -> Iterable[BasicBlock]:
@@ -1105,7 +1117,9 @@ class ReturnInst(Inst):
     def run(self, env: EvalEnv) -> Optional[BB]:
         return ReturnBlock(f"return {self.ret}", self.ret)
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def __str__(self) -> str:
@@ -1137,7 +1151,9 @@ class TrapInst(Inst):
     def run(self, env: EvalEnv) -> None:
         raise Trap(self.message)
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def __str__(self) -> str:
@@ -1169,7 +1185,9 @@ class TraceInst(Inst):
     def run(self, env: EvalEnv) -> None:
         print(env[self.value])
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def __str__(self) -> str:
@@ -1199,7 +1217,9 @@ class BreakpointInst(Inst):
     def run(self, env: EvalEnv) -> None:
         breakpoint()
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def __str__(self) -> str:
@@ -1253,6 +1273,7 @@ class BasicBlock(BB):
         for inst in self.instructions:
             env.stats.inst_type_count[type(inst)] += 1
             env.stats.inst_count[id(inst)] += 1
+            next_bb = None
             if isinstance(inst, CallInst):
                 yield from inst.run_call(env)
             else:
