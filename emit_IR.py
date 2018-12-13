@@ -293,7 +293,7 @@ class ExpressionEmitter(Visitor):
         arity_known_correct = self._arity_known_correct(
             call, is_known_function, tail_call_data)
         tail_call_args_compatible = self._tail_call_args_compatible(
-            call, arity_known_correct, tail_call_data)
+            call, tail_call_data)
 
         func_to_call = self._get_func_to_call(
             call, is_known_function,
@@ -353,6 +353,10 @@ class ExpressionEmitter(Visitor):
     def _arity_known_correct(self, call: sexp.SCall,
                              is_known_function: bool,
                              tail_call_data: Optional[TailCallData]) -> bool:
+        if tail_call_data is not None:
+            return (len(tail_call_data.call.args)
+                    == len(tail_call_data.get_func().params))
+
         if self._expr_types is None:
             return False
 
@@ -368,11 +372,13 @@ class ExpressionEmitter(Visitor):
 
     def _tail_call_args_compatible(
             self, call: sexp.SCall,
-            arity_known_correct: bool,
+            # arity_known_correct: bool,
             tail_call_data: Optional[TailCallData]) -> bool:
-        if (self._expr_types is None
-                or tail_call_data is None or not arity_known_correct):
+        if tail_call_data is None:
             return False
+
+        if self._expr_types is None:
+            return True
 
         for arg_expr, param in zip(call.args, tail_call_data.func_params):
             arg_type = self._expr_types.get_expr_type(arg_expr)

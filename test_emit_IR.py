@@ -806,10 +806,12 @@ class EmitOptimizedFuncTestCase(unittest.TestCase):
         func.code = emitter.get_emitted_func()
         self.env._global_env[func.name] = func
 
-        type_analyzer = scheme_types.FunctionTypeAnalyzer(
-            param_types={} if param_types is None else param_types,
-            global_env=self.env._global_env)
-        type_analyzer.visit(func)
+        type_analyzer = None
+        if param_types is not None:
+            type_analyzer = scheme_types.FunctionTypeAnalyzer(
+                param_types=param_types,
+                global_env=self.env._global_env)
+            type_analyzer.visit(func)
 
         optimizing_emitter = emit_IR.FunctionEmitter(
             self.env._global_env,
@@ -1146,7 +1148,7 @@ wrong_arity:
             (define (spam)
                 ((lambda (egg) egg) 42)
             )'''
-        optimized = self.get_optimized_func_bytecode(code)
+        optimized = self.get_optimized_func_bytecode(code, param_types={})
 
         expected = '''
 function (?) entry=bb0
@@ -1164,7 +1166,7 @@ bb0:
             (define (spam)
                 ((lambda (egg) egg) 42 43)
             )'''
-        optimized = self.get_optimized_func_bytecode(code)
+        optimized = self.get_optimized_func_bytecode(code, param_types={})
 
         expected = '''
 function (?) entry=bb0
@@ -1185,7 +1187,7 @@ wrong_arity:
 
     def test_removed_is_func_and_arity_check_user_func_call(self) -> None:
         code = '''(define (spam) (spam))'''
-        optimized = self.get_optimized_func_bytecode(code)
+        optimized = self.get_optimized_func_bytecode(code, param_types={})
 
         expected = '''
 function (?) entry=bb0
@@ -1200,7 +1202,7 @@ bb0:
 
     def test_removed_is_func_check_user_func_call(self) -> None:
         code = '''(define (spam) (spam 42))'''
-        optimized = self.get_optimized_func_bytecode(code)
+        optimized = self.get_optimized_func_bytecode(code, param_types={})
 
         expected = '''
 function (?) entry=bb0
@@ -1221,7 +1223,7 @@ wrong_arity:
 
     def test_removed_is_func_and_arity_check_builtin_func_call(self) -> None:
         code = '''(define (spam) (+ 3 4))'''
-        optimized = self.get_optimized_func_bytecode(code)
+        optimized = self.get_optimized_func_bytecode(code, param_types={})
 
         expected = '''
 function (?) entry=bb0
@@ -1234,9 +1236,9 @@ bb0:
 
     # -------------------------------------------------------------------------
 
-    def test_removed_is_func_check_builtin_func_call(self) -> None:
+    def test_removed_is_func_check_builtin_call_with_type_info(self) -> None:
         code = '''(define (spam) (bool? 3 4))'''
-        optimized = self.get_optimized_func_bytecode(code)
+        optimized = self.get_optimized_func_bytecode(code, param_types={})
 
         expected = '''
 function (?) entry=bb0
@@ -1255,10 +1257,10 @@ wrong_arity:
 
     # -------------------------------------------------------------------------
 
-    def test_would_be_tail_call_wrong_arity(self) -> None:
+    def test_would_be_tail_call_wrong_arity_with_type_info(self) -> None:
         code = '''(define (spam) (spam 42))'''
         optimized = self.get_optimized_func_bytecode(
-            code, optimize_tail_calls=True)
+            code, {}, optimize_tail_calls=True)
 
         expected = '''
 function (?) entry=bb0
@@ -1275,9 +1277,35 @@ wrong_arity:
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
+    def test_would_be_tail_call_wrong_arity_no_type_info(self) -> None:
+        code = '''(define (spam) (spam 42))'''
+        optimized = self.get_optimized_func_bytecode(
+            code, optimize_tail_calls=True)
+
+        expected = '''
+function (? ) entry=bb0
+bb0:
+  v0 = lookup 'spam
+  v1 = typeof v0
+  v2 = Binop.SYM_EQ v1 'function
+  brn v2 non_function
+  v3 = arity v0
+  v4 = Binop.NUM_EQ v3 1
+  brn v4 wrong_arity
+  v5 = call v0 (42)
+  return v5
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
     # -------------------------------------------------------------------------
 
-    def test_tail_call_right_arity(self) -> None:
+    def test_tail_call_right_arity_no_type_info(self) -> None:
         code = '''(define (spam egg) (spam 42))'''
         optimized = self.get_optimized_func_bytecode(
             code, optimize_tail_calls=True)
@@ -1288,6 +1316,96 @@ bb0:
   egg = 42
   jmp bb0
   return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_tail_call_vector_make_recur_no_type_info(self) -> None:
+        code = '''
+            (define (vector-make/recur len idx v x)
+                (vector-set! v idx x)
+                (if (number= len (+ idx 1))
+                    v
+                    (vector-make/recur len (+ idx 1) v x)
+                )
+            )
+            '''
+        optimized = self.get_optimized_func_bytecode(
+            code, optimize_tail_calls=True)
+
+        expected = '''
+function (? len idx v x) entry=bb0
+bb0:
+  v0 = lookup 'vector-set!
+  v1 = typeof v0
+  v2 = Binop.SYM_EQ v1 'function
+  brn v2 non_function
+  v3 = arity v0
+  v4 = Binop.NUM_EQ v3 3
+  brn v4 wrong_arity
+  v5 = call v0 (v, idx, x)
+  v6 = lookup 'number=
+  v7 = typeof v6
+  v8 = Binop.SYM_EQ v7 'function
+  brn v8 non_function
+  v9 = arity v6
+  v10 = Binop.NUM_EQ v9 2
+  brn v10 wrong_arity
+  v11 = lookup '+
+  v12 = typeof v11
+  v13 = Binop.SYM_EQ v12 'function
+  brn v13 non_function
+  v14 = arity v11
+  v15 = Binop.NUM_EQ v14 2
+  brn v15 wrong_arity
+  v16 = call v11 (idx, 1)
+  v17 = call v6 (len, v16)
+  br v17 bb1
+  jmp bb2
+
+bb2:
+  v19 = lookup '+
+  v20 = typeof v19
+  v21 = Binop.SYM_EQ v20 'function
+  brn v21 non_function
+  v22 = arity v19
+  v23 = Binop.NUM_EQ v22 2
+  brn v23 wrong_arity
+  v24 = call v19 (idx, 1)
+  idx = v24
+  jmp bb0
+  v18 = 0
+  jmp bb3
+
+bb3:
+  return v18
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
+
+bb1:
+  v18 = v
+  jmp bb3
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+non_function:
+  trap 'Attempted to call a non-function'
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
@@ -1314,6 +1432,56 @@ bb0:
   egg = v1
   jmp bb0
   return 0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
+    def test_tail_call_in_specialized_vector_make_recur(self) -> None:
+        code = '''
+            (define (vector-make/recur len idx v x)
+                (vector-set! v idx x)
+                (if (number= len (+ idx 1))
+                    v
+                    (vector-make/recur len (+ idx 1) v x)
+                )
+            )
+            '''
+        optimized = self.get_optimized_func_bytecode(
+            code,
+            param_types={
+                sexp.SSym('len'): scheme_types.SchemeNum,
+                sexp.SSym('idx'): scheme_types.SchemeNum,
+                sexp.SSym('v'): scheme_types.SchemeVectType(None),
+                sexp.SSym('x'): scheme_types.SchemeNum,
+            },
+            optimize_tail_calls=True)
+
+        expected = '''
+function (? len idx v x) entry=bb0
+bb0:
+  v0 = lookup 'vector-set!
+  v1 = call v0 (v, idx, x) \
+(SchemeVectType(length=None), SchemeNumType(), SchemeNumType())
+  v2 = lookup 'number=
+  v3 = lookup '+
+  v4 = call v3 (idx, 1) (SchemeNumType(), SchemeNumType())
+  v5 = call v2 (len, v4) (SchemeNumType(), SchemeNumType())
+  br v5 bb1
+  jmp bb2
+
+bb2:
+  v7 = lookup '+
+  v8 = call v7 (idx, 1) (SchemeNumType(), SchemeNumType())
+  idx = v8
+  jmp bb0
+  v6 = 0
+  jmp bb3
+
+bb3:
+  return v6
+
+bb1:
+  v6 = v
+  jmp bb3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
