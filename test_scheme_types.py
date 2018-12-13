@@ -30,7 +30,13 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
-        self.assertEqual([scheme_types.SchemeVectType(4)], types)
+        self.assertEqual([
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeVectType(4)
+        ], types)
 
     def test_vector_literal_size_above_specialization_threshold(self) -> None:
         prog = sexp.parse("[1 2 3 4 5]")
@@ -38,7 +44,14 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         analyzer.visit(prog)
 
         types = list(analyzer.get_expr_types().values())
-        self.assertEqual([scheme_types.SchemeVectType(None)], types)
+        self.assertEqual([
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeVectType(None)
+        ], types)
 
     def test_num_literal(self) -> None:
         prog = sexp.parse("42")
@@ -283,8 +296,16 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         types = list(analyzer.get_expr_types().values())
         expected = [
             scheme_types.SchemeObject,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
             scheme_types.SchemeVectType(3),
+
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
             scheme_types.SchemeVectType(3),
+
             scheme_types.SchemeVectType(3),
         ]
         self.assertEqual(expected, types)
@@ -297,8 +318,15 @@ class FunctionTypeAnalyzerTestCase(unittest.TestCase):
         types = list(analyzer.get_expr_types().values())
         expected = [
             scheme_types.SchemeObject,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
             scheme_types.SchemeVectType(3),
+
+            scheme_types.SchemeNum,
+            scheme_types.SchemeNum,
             scheme_types.SchemeVectType(2),
+
             scheme_types.SchemeVectType(None),
         ]
         self.assertEqual(expected, types)
