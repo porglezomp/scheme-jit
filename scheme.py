@@ -1,8 +1,9 @@
 #! /usr/bin/env python3
+from __future__ import annotations
 
 import argparse
 import sys
-from typing import Dict
+from typing import Any, Dict
 
 import bytecode
 import runner
@@ -26,10 +27,27 @@ def main() -> None:
     runner.add_builtins(env)
     runner.add_prelude(env)
     print(runner.run(env, prog_text))
-    if args.machine_readable:
-        report_stats_json(args, env)
-    else:
-        report_stats(args, env)
+    with Output(args) as out_f:
+        args.out_file = out_f.file
+        if args.machine_readable:
+            report_stats_json(args, env)
+        else:
+            report_stats(args, env)
+
+
+class Output:
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.name = args.output[0]
+        self.file = sys.stdout
+
+    def __enter__(self) -> Output:
+        if self.name != '-':
+            self.file = open(self.name, 'w')
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        if self.name != '-':
+            self.file.close()
 
 
 def report_stats_json(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
@@ -38,35 +56,38 @@ def report_stats_json(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
 
 def report_stats(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
     if args.function_stats:
-        print('-----')
+        print('-----', file=args.out_file)
         for name, defn in env._global_env.items():
             assert isinstance(defn, sexp.SFunction)
             count = env.stats.function_count[id(defn.code)]
             params = ''.join(' ' + p.name for p in defn.params)
-            print(f"{count:>8} ({defn.name}{params})")
+            print(f"{count:>8} ({defn.name}{params})", file=args.out_file)
             for types, spec in defn.specializations.items():
                 count = env.stats.function_count[id(spec)]
                 type_names = ', '.join(str(t) for t in types)
-                print(f"{count:>8} ({defn.name}{params}) ({type_names})")
+                print(f"{count:>8} ({defn.name}{params}) ({type_names})",
+                      file=args.out_file)
     if args.all_stats:
-        print('-----')
+        print('-----', file=args.out_file)
         for name, defn in env._global_env.items():
             assert isinstance(defn, sexp.SFunction)
             assert defn.code is not None
             count = env.stats.function_count[id(defn.code)]
             if count:
-                print(defn.code.format_stats(name, None, env.stats))
-                print()
+                print(defn.code.format_stats(name, None, env.stats),
+                      file=args.out_file)
+                print(file=args.out_file)
                 for types, spec in defn.specializations.items():
-                    print(spec.format_stats(name, types, env.stats))
-                    print()
+                    print(spec.format_stats(name, types, env.stats),
+                          file=args.out_file)
+                    print(file=args.out_file)
     if args.stats:
-        print('-----')
+        print('-----', file=args.out_file)
         total = 0
         for inst, count in env.stats.inst_type_count.items():
             total += count
-            print(f"{inst.__name__:>10}: {count}")
-        print(f"{'Total':>10}: {total}")
+            print(f"{inst.__name__:>10}: {count}", file=args.out_file)
+        print(f"{'Total':>10}: {total}", file=args.out_file)
         # print('-----')
         # for inst, count in env.stats.inst_type_count.items():
         #     print(f"{inst.__name__:>10}: {count}")
@@ -102,7 +123,7 @@ def parse_args() -> argparse.Namespace:
         '-O', '--print-optimizations', action='store_true',
         help="log when optimizations are performed")
     parser.add_argument(
-        '-o', '--output', nargs=1,
+        '-o', '--output', nargs=1, default='-',
         help="output the stats to a file")
     parser.add_argument(
         '-m', '--machine-readable', action='store_true',
