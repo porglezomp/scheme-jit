@@ -235,6 +235,8 @@ class Stats:
     taken_count: Counter[int] = field(default_factory=Counter)
     function_count: Counter[int] = field(default_factory=Counter)
     specialization_dispatch: Counter[int] = field(default_factory=Counter)
+    startup_time: float = 0
+    program_time: float = 0
 
 
 class EvalEnv:
@@ -249,7 +251,9 @@ class EvalEnv:
                  jit: bool = False,
                  bytecode_jit: bool = False,
                  print_specializations: bool = False,
-                 print_optimizations: bool = False):
+                 print_optimizations: bool = False,
+                 inline_threshold: int = 10,
+                 specialization_threshold: int = 2):
         if local_env is None:
             self._local_env = {}
         else:
@@ -265,6 +269,8 @@ class EvalEnv:
         self.bytecode_jit = bytecode_jit
         self.print_specializations = print_specializations
         self.print_optimizations = print_optimizations
+        self.inline_threshold = inline_threshold
+        self.specialization_threshold = specialization_threshold
 
     def new_local(self) -> EvalEnv:
         env = EvalEnv(
@@ -272,7 +278,10 @@ class EvalEnv:
             self._global_env,
             jit=self.jit,
             bytecode_jit=self.bytecode_jit,
-            print_specializations=self.print_specializations)
+            print_specializations=self.print_specializations,
+            inline_threshold=self.inline_threshold,
+            specialization_threshold=self.specialization_threshold,
+        )
         env.stats = self.stats
         return env
 
@@ -869,7 +878,7 @@ class CallInst(Inst):
         func.calls[type_tuple] += 1
         if (not func.name.name.startswith('inst/')
                 and type_tuple not in func.specializations
-                and func.calls[type_tuple] > 1):
+                and func.calls[type_tuple] >= env.specialization_threshold):
             self._generate_specialization(env, func, func_code, type_tuple)
 
         func_env = env.new_local()

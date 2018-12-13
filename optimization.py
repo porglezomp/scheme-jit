@@ -64,7 +64,7 @@ class FunctionOptimizer:
             if isinstance(inst, CallInst):
                 func = values[inst.func]
                 if (isinstance(func, SFunction)
-                    and self.should_inline(func, inst.specialization)
+                    and self.should_inline(env, func, inst.specialization)
                 ):  # noqa
                     code = func.get_specialized(inst.specialization)
                     code = copy.deepcopy(code)
@@ -308,7 +308,7 @@ class FunctionOptimizer:
         self.remove_dead_code()
 
     def should_inline(
-            self, func: SFunction, types: Optional[TypeTuple]
+            self, env: EvalEnv, func: SFunction, types: Optional[TypeTuple]
     ) -> bool:
         if func.name in self.banned_from_inline:
             return False
@@ -339,4 +339,4 @@ class FunctionOptimizer:
 
         spec = func.get_specialized(types)
         icount = sum(len(b.instructions) for b in spec.blocks())
-        return icount <= 10
+        return icount <= env.inline_threshold
