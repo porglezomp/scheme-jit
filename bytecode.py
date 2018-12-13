@@ -235,6 +235,8 @@ class Stats:
     taken_count: Counter[int] = field(default_factory=Counter)
     function_count: Counter[int] = field(default_factory=Counter)
     specialization_dispatch: Counter[int] = field(default_factory=Counter)
+    startup_time: float = 0
+    program_time: float = 0
 
 
 class EvalEnv:

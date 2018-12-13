@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import json
 import sys
-from typing import Any, Dict
+import time
+from typing import Any, Dict, List
 
 import bytecode
 import runner
@@ -23,10 +26,15 @@ def main() -> None:
                            bytecode_jit=args.bytecode_jit,
                            print_specializations=args.print_specializations,
                            print_optimizations=args.print_optimizations)
+    start = time.perf_counter()
     runner.add_intrinsics(env)
     runner.add_builtins(env)
     runner.add_prelude(env)
+    startup = time.perf_counter()
     print(runner.run(env, prog_text))
+    end = time.perf_counter()
+    env.stats.startup_time = startup - start
+    env.stats.program_time = end - startup
     with Output(args) as out_f:
         args.out_file = out_f.file
         if args.machine_readable:
@@ -51,46 +59,106 @@ class Output:
 
 
 def report_stats_json(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
-    raise NotImplementedError
-
-
-def report_stats(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
+    result: Dict[str, Any] = {
+        'config': {
+            'tail_calls': env.optimize_tail_calls,
+            'ast_jit': env.jit,
+            'bytecode_jit': env.bytecode_jit,
+        }
+    }
     if args.function_stats:
-        print('-----', file=args.out_file)
+        functions: Dict[str, Any] = {}
+        result['functions'] = functions
         for name, defn in env._global_env.items():
             assert isinstance(defn, sexp.SFunction)
             count = env.stats.function_count[id(defn.code)]
             params = ''.join(' ' + p.name for p in defn.params)
-            print(f"{count:>8} ({defn.name}{params})", file=args.out_file)
+            specializations: Dict[str, Any] = {}
+            functions[defn.name.name] = {
+                'params': [str(p) for p in defn.params],
+                'count': count,
+                'total': count + sum(
+                    env.stats.function_count[id(spec)]
+                    for spec in defn.specializations.values()),
+                'specializations': specializations,
+            }
             for types, spec in defn.specializations.items():
                 count = env.stats.function_count[id(spec)]
-                type_names = ', '.join(str(t) for t in types)
-                print(f"{count:>8} ({defn.name}{params}) ({type_names})",
-                      file=args.out_file)
+                type_names = [str(t) for t in types]
+                spec_name = f"({', '.join(type_names)})"
+                specializations[spec_name] = {
+                    'types': type_names,
+                    'count': count,
+                }
     if args.all_stats:
-        print('-----', file=args.out_file)
+        functions = {}
+        result['code'] = functions
         for name, defn in env._global_env.items():
             assert isinstance(defn, sexp.SFunction)
             assert defn.code is not None
-            count = env.stats.function_count[id(defn.code)]
-            if count:
-                print(defn.code.format_stats(name, None, env.stats),
-                      file=args.out_file)
-                print(file=args.out_file)
-                for types, spec in defn.specializations.items():
-                    print(spec.format_stats(name, types, env.stats),
-                          file=args.out_file)
-                    print(file=args.out_file)
+            specializations = {}
+            functions[defn.name.name] = {
+                'code': defn.code.format_stats(name, None, env.stats),
+                'specializations': specializations,
+            }
+            for types, spec in defn.specializations.items():
+                type_names = [str(t) for t in types]
+                spec_name = f"({', '.join(type_names)})"
+                specializations[spec_name] = (
+                    spec.format_stats(name, types, env.stats))
     if args.stats:
-        print('-----', file=args.out_file)
+        inst_counts: Dict[str, int] = {}
+        result['inst_counts'] = inst_counts
         total = 0
         for inst, count in env.stats.inst_type_count.items():
             total += count
-            print(f"{inst.__name__:>10}: {count}", file=args.out_file)
-        print(f"{'Total':>10}: {total}", file=args.out_file)
-        # print('-----')
-        # for inst, count in env.stats.inst_type_count.items():
-        #     print(f"{inst.__name__:>10}: {count}")
+            inst_counts[inst.__name__] = count
+        inst_counts['Total'] = total
+        result['time'] = {
+            'startup': env.stats.startup_time,
+            'program': env.stats.program_time,
+        }
+    json.dump(result, args.out_file, indent=2)
+
+
+def report_stats(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
+    with contextlib.redirect_stdout(args.out_file):
+        if args.function_stats:
+            print('-----')
+            for name, defn in env._global_env.items():
+                assert isinstance(defn, sexp.SFunction)
+                count = env.stats.function_count[id(defn.code)]
+                params = ''.join(' ' + p.name for p in defn.params)
+                print(f"{count:>8} ({defn.name}{params})")
+                for types, spec in defn.specializations.items():
+                    count = env.stats.function_count[id(spec)]
+                    type_names = ', '.join(str(t) for t in types)
+                    print(f"{count:>8}   ({defn.name}{params}) ({type_names})")
+        if args.all_stats:
+            print('-----')
+            for name, defn in env._global_env.items():
+                assert isinstance(defn, sexp.SFunction)
+                assert defn.code is not None
+                count = env.stats.function_count[id(defn.code)]
+                if count:
+                    print(defn.code.format_stats(name, None, env.stats))
+                    print()
+                    for types, spec in defn.specializations.items():
+                        print(spec.format_stats(name, types, env.stats))
+                        print()
+        if args.stats:
+            print('-----')
+            total = 0
+            for inst, count in env.stats.inst_type_count.items():
+                total += count
+                print(f"{inst.__name__:>10}: {count}")
+            print(f"{'Total':>10}: {total}")
+            print('-----')
+            print(f"Startup time: {env.stats.startup_time:0.2f}")
+            print(f"Program time: {env.stats.program_time:0.2f}")
+            # print('-----')
+            # for inst, count in env.stats.inst_type_count.items():
+            #     print(f"{inst.__name__:>10}: {count}")
 
 
 def parse_args() -> argparse.Namespace:
