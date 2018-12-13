@@ -9,7 +9,6 @@
 # Data files are written to data/
 #
 
-
 FLAGS =
 
 benchmark_files := $(notdir $(wildcard benchmarks/*.scm))
@@ -18,9 +17,6 @@ benchmark_targets := $(benchmark_files:.scm=.bench)
 
 all: $(benchmark_targets)
 
-
-.PHONY: all clean print
-
 %.bench:
 	@echo $@
 	@mkdir -p data
@@ -28,6 +24,8 @@ all: $(benchmark_targets)
 		-fsa -m -o data/$*_$(FLAGS).json \
 		benchmarks/$*.scm > benchmarks/$*.out) 2> data/$*_$(FLAGS).time
 	@diff -q benchmarks/$*.correct benchmarks/$*.out
+
+.PHONY: all clean
 
 clean:
 	rm benchmarks/*.out
