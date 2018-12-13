@@ -1219,7 +1219,9 @@ class DisplayInst(Inst):
     def run(self, env: EvalEnv) -> None:
         print(env[self.value], end='')
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def __str__(self) -> str:
@@ -1249,7 +1251,9 @@ class NewlineInst(Inst):
     def run(self, env: EvalEnv) -> None:
         print()
 
-    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+    def run_abstract(
+            self, env: EvalEnv, types: TypeMap, values: ValueMap
+    ) -> None:
         pass
 
     def __str__(self) -> str:

@@ -151,15 +151,6 @@
   )
 )
 
-(define (list vec) (list-impl vec 0 '()))
-
-(define (list-impl vec index result)
-    (if (number= index (vector-length vec))
-        (reverse-tail result)
-        (list-impl vec (+ index 1) (cons (vector-index vec index) result))
-    )
-)
-
 (define (reverse-tail list)
     (reverse-tail-impl list '())
 )
