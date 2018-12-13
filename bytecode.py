@@ -877,6 +877,7 @@ class CallInst(Inst):
         type_tuple = tuple(call_args_deducer.arg_types)
         func.calls[type_tuple] += 1
         if (not func.name.name.startswith('inst/')
+                and env.specialization_threshold != 0
                 and type_tuple not in func.specializations
                 and func.calls[type_tuple] >= env.specialization_threshold):
             self._generate_specialization(env, func, func_code, type_tuple)

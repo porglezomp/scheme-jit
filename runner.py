@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, cast
 
 import bytecode
 import emit_IR
+import scheme_types
 import sexp
 from bytecode import BasicBlock, Binop, EvalEnv, Function, Inst, Var
 from emit_IR import FunctionEmitter
@@ -244,7 +245,14 @@ def run_code(env: EvalEnv, code: SExp, context: str = "top-level") -> Value:
             tail_call_finder.visit(code)
             tail_calls = tail_call_finder.tail_calls
 
-        emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
+        type_analyzer = None
+        if env.jit:
+            type_analyzer = scheme_types.FunctionTypeAnalyzer(
+                {}, env._global_env)
+            type_analyzer.visit(code)
+
+        emitter = FunctionEmitter(
+            env._global_env, tail_calls=tail_calls, expr_types=type_analyzer)
         emitter.visit(code)
         _add_func_to_env(code, emitter, env)
         assert code.code
