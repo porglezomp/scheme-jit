@@ -464,11 +464,12 @@ class TypeofInst(Inst):
             self, env: EvalEnv, types: TypeMap, values: ValueMap
     ) -> None:
         val = values[self.value]
+        ty = types[self.value]
         types[self.dest] = scheme_types.SchemeSym
         if val is not None:
             values[self.dest] = val.type_name()
         else:
-            values[self.dest] = types[self.value].symbol()
+            values[self.dest] = ty.symbol()
 
     def __str__(self) -> str:
         return f"{self.dest} = typeof {self.value}"
@@ -710,9 +711,12 @@ class StoreInst(Inst):
         value = values[self.value]
         if vect is None:
             # Disaster! We have to invalidate all vectors in values
+            to_invalidate = []
             for k, value in values.values.items():
                 if isinstance(value, SVect):
-                    values[k] = None
+                    to_invalidate.append(k)
+            for key in to_invalidate:
+                values[k] = None
         elif offset is None or value is None:
             values[self.addr] = None
         elif isinstance(offset, SNum) and isinstance(vect, SVect):
@@ -759,7 +763,7 @@ class LengthInst(Inst):
     def run_abstract(
             self, env: EvalEnv, types: TypeMap, values: ValueMap
     ) -> None:
-        ty = types[self.dest]
+        ty = types[self.addr]
         types[self.dest] = scheme_types.SchemeNum
         vect = values[self.addr]
         if vect is None:
@@ -779,10 +783,10 @@ class LengthInst(Inst):
         self.addr = self.addr.freshen(prefix)
 
     def constant_fold(self, types: TypeMap, values: ValueMap) -> LengthInst:
-        return copy.copy(self)
+        return LengthInst(self.dest, values.get_param(self.addr))
 
     def copy_prop(self, values: Dict[Var, Parameter]) -> LengthInst:
-        return copy.copy(self)
+        return LengthInst(self.dest, get_value(values, self.addr))
 
     def dests(self) -> List[Var]:
         return [self.dest]
