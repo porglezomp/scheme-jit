@@ -152,6 +152,7 @@ class ExpressionEmitter(Visitor):
             emitter.visit(branch_to_emit)
 
             self.result = emitter.result
+            self.end_block = emitter.end_block
             return
 
         test_emitter = ExpressionEmitter(
