@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from typing import (TYPE_CHECKING, Counter, Dict, Iterator, List, Optional,
                     Sequence, Tuple, Union, cast)
 
+import bytecode
+
 if TYPE_CHECKING:
     import bytecode
     from scheme_types import TypeTuple
@@ -25,11 +27,18 @@ class Value(SExp):
     def address(self) -> int:
         ...
 
+    @abstractmethod
+    def to_param(self) -> Optional[bytecode.Parameter]:
+        ...
+
 
 @dataclass(frozen=True, order=True)
 class SNum(Value):
     """A lisp number"""
     value: int
+
+    def type_name(self) -> SSym:
+        return SSym('number')
 
     def __str__(self) -> str:
         return str(self.value)
@@ -37,11 +46,11 @@ class SNum(Value):
     def __hash__(self) -> int:
         return hash(self.value)
 
-    def type_name(self) -> SSym:
-        return SSym('number')
-
     def address(self) -> int:
         return self.value
+
+    def to_param(self) -> bytecode.NumLit:
+        return bytecode.NumLit(self)
 
 
 @dataclass(frozen=True)
@@ -49,14 +58,17 @@ class SBool(Value):
     """A lisp boolean"""
     value: bool
 
-    def __str__(self) -> str:
-        return str(self.value)
-
     def type_name(self) -> SSym:
         return SSym('bool')
 
+    def __str__(self) -> str:
+        return str(self.value)
+
     def address(self) -> int:
         return id(self.value)
+
+    def to_param(self) -> bytecode.BoolLit:
+        return bytecode.BoolLit(self)
 
 
 @dataclass(frozen=True)
@@ -64,17 +76,20 @@ class SSym(Value):
     """A lisp symbol"""
     name: str
 
+    def type_name(self) -> SSym:
+        return SSym('symbol')
+
     def __str__(self) -> str:
         return self.name
 
     def __hash__(self) -> int:
         return hash(self.name)
 
-    def type_name(self) -> SSym:
-        return SSym('symbol')
-
     def address(self) -> int:
         return id(self.name)
+
+    def to_param(self) -> bytecode.SymLit:
+        return bytecode.SymLit(self)
 
 
 @dataclass(frozen=True)
@@ -93,14 +108,17 @@ class SVect(Value):
     """
     items: List[SExp]
 
-    def __str__(self) -> str:
-        return f"[{' '.join(str(i) for i in self.items)}]"
-
     def type_name(self) -> SSym:
         return SSym('vector')
 
+    def __str__(self) -> str:
+        return f"[{' '.join(str(i) for i in self.items)}]"
+
     def address(self) -> int:
         return id(self.items)
+
+    def to_param(self) -> Optional[bytecode.Parameter]:
+        return None
 
 
 @dataclass(frozen=True)
@@ -238,6 +256,19 @@ class SFunction(Value):
 
     def address(self) -> int:
         return id(self.code)
+
+    def __str__(self) -> str:
+        params = ''.join(' ' + p.name for p in self.params)
+        return f"<function ({self.name}{params}) at {id(self):x}>"
+
+    def get_specialized(self, types: Optional[TypeTuple]) -> bytecode.Function:
+        assert self.code
+        if types is None:
+            return self.code
+        return self.specializations.get(types, self.code)
+
+    def to_param(self) -> bytecode.FuncLit:
+        return bytecode.FuncLit(self)
 
 
 @dataclass(frozen=True)

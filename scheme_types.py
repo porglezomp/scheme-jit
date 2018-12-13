@@ -3,15 +3,27 @@ from __future__ import annotations
 import copy
 from abc import abstractmethod
 from dataclasses import InitVar, dataclass, field
-from typing import (Callable, ClassVar, Dict, List, Mapping, Optional, Tuple,
-                    Type, cast)
+from typing import (Any, Callable, ClassVar, Dict, List, Mapping, Optional,
+                    Tuple, Type, cast)
 
 import sexp
+from sexp import SSym
 from visitor import Visitor
 
 
 @dataclass(frozen=True)
 class SchemeObjectType:
+    def symbol(self) -> Optional[sexp.SSym]:
+        return None
+
+    def __str__(self) -> str:
+        return 'object'
+
+    def join(self, other: SchemeObjectType) -> SchemeObjectType:
+        if self == other:
+            return self
+        return SchemeObject
+
     def __lt__(self, other: object) -> bool:
         return issubclass(type(self), type(other))
 
@@ -45,6 +57,12 @@ class SchemeValueType(SchemeObjectType):
 
 @dataclass(frozen=True)
 class SchemeNumType(SchemeValueType):
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('number')
+
+    def __str__(self) -> str:
+        return 'number'
+
     def type_name(self) -> sexp.SSym:
         return sexp.SSym('number')
 
@@ -54,6 +72,12 @@ SchemeNum = SchemeNumType()
 
 @dataclass(frozen=True)
 class SchemeBoolType(SchemeValueType):
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('bool')
+
+    def __str__(self) -> str:
+        return 'bool'
+
     def type_name(self) -> sexp.SSym:
         return sexp.SSym('bool')
 
@@ -63,10 +87,14 @@ SchemeBool = SchemeBoolType()
 
 @dataclass(frozen=True)
 class SchemeSymType(SchemeValueType):
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('symbol')
+
+    def __str__(self) -> str:
+        return 'symbol'
+
     def type_name(self) -> sexp.SSym:
         return sexp.SSym('symbol')
-
-    pass
 
 
 SchemeSym = SchemeSymType()
@@ -75,6 +103,21 @@ SchemeSym = SchemeSymType()
 @dataclass(frozen=True)
 class SchemeVectType(SchemeValueType):
     length: Optional[int]
+
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('vector')
+
+    def __str__(self) -> str:
+        if self.length is not None:
+            return f'vector[{self.length}]'
+        return 'vector'
+
+    def join(self, other: SchemeObjectType) -> SchemeObjectType:
+        if isinstance(other, SchemeVectType):
+            if self.length == other.length:
+                return SchemeVectType(self.length)
+            return SchemeVectType(None)
+        return SchemeObject
 
     def __init__(self, length: Optional[int]):
         # https://docs.python.org/3/library/dataclasses.html#frozen-instances
@@ -125,6 +168,21 @@ class SchemeFunctionType(SchemeValueType):
     def type_name(self) -> sexp.SSym:
         return sexp.SSym('function')
 
+    def symbol(self) -> Optional[sexp.SSym]:
+        return SSym('function')
+
+    def __str__(self) -> str:
+        if self.arity is not None:
+            return f'function[{self.arity}, {self.return_type}]'
+        return 'function[{self.return_type}]'
+
+    def join(self, other: SchemeObjectType) -> SchemeObjectType:
+        if isinstance(other, SchemeFunctionType):
+            if self.arity == other.arity:
+                return SchemeFunctionType(self.arity)
+            return SchemeFunctionType(None)
+        return SchemeObject
+
 
 @dataclass(frozen=True)
 class SchemeQuotedType(SchemeObjectType):
@@ -143,6 +201,12 @@ class SExpWrapper:
 
     def __hash__(self) -> int:
         return hash(id(self.expr))
+
+
+def get_type(value: sexp.Value) -> SchemeObjectType:
+    visitor = CallArgsTypeAnalyzer()
+    visitor.visit(value)
+    return visitor.arg_types[0]
 
 
 class CallArgsTypeAnalyzer(Visitor):

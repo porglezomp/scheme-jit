@@ -6,6 +6,7 @@ import sexp
 from bytecode import BasicBlock, Binop, EvalEnv, Function, Inst, Var
 from emit_IR import FunctionEmitter
 from find_tail_calls import TailCallFinder
+from optimization import FunctionOptimizer
 from sexp import Nil, SExp, SFunction, SSym, Value
 
 
@@ -69,7 +70,7 @@ def add_intrinsics(eval_env: EvalEnv) -> None:
     env[SSym('inst/number<')] = binop(SSym('inst/number<'), Binop.NUM_LT)
 
 
-def add_builtins(env: EvalEnv) -> None:
+def add_builtins(env: EvalEnv, optimize: bool = False) -> None:
     """Add builtins to the environment."""
     code = sexp.parse("""
     (define (trap) (inst/trap))
@@ -77,9 +78,13 @@ def add_builtins(env: EvalEnv) -> None:
     (define (breakpoint) (inst/breakpoint))
     (define (assert b) (if b 0 (trap)))
     (define (typeof x) (inst/typeof x))
-    (define (not b)
-      (assert (bool? b))
-      (if b false true))
+
+    (define (symbol= a b)
+      ; Explicitly use inst/symbol= instead of symbol? because
+      ; symbol? uses symbol=, so we need to avoid infinite recursion.
+      (assert (inst/symbol= (typeof a) 'symbol))
+      (assert (inst/symbol= (typeof b) 'symbol))
+      (inst/symbol= a b))
 
     (define (number? x) (symbol= (typeof x) 'number))
     (define (symbol? x) (symbol= (typeof x) 'symbol))
@@ -94,6 +99,10 @@ def add_builtins(env: EvalEnv) -> None:
       (if (vector? x)
         (number= (vector-length x) 0)
         false))
+
+    (define (not b)
+      (assert (bool? b))
+      (if b false true))
 
     (define (+ a b) (assert (number? a)) (assert (number? b)) (inst/+ a b))
     (define (- a b) (assert (number? a)) (assert (number? b)) (inst/- a b))
@@ -110,12 +119,6 @@ def add_builtins(env: EvalEnv) -> None:
       (inst/% a b))
 
     (define (pointer= a b) (inst/pointer= a b))
-    (define (symbol= a b)
-      ; Explicitly use inst/symbol= instead of symbol? because
-      ; symbol? uses symbol=, so we need to avoid infinite recursion.
-      (assert (inst/symbol= (typeof a) 'symbol))
-      (assert (inst/symbol= (typeof b) 'symbol))
-      (inst/symbol= a b))
     (define (number= a b)
       (assert (number? a))
       (assert (number? b))
@@ -160,11 +163,18 @@ def add_builtins(env: EvalEnv) -> None:
     """)
     emitter = FunctionEmitter(env._global_env)
     for definition in code:
+        assert isinstance(definition, SFunction)
         emitter.visit(definition)
-        _add_func_to_env(cast(sexp.SFunction, definition), emitter, env)
+        _add_func_to_env(definition, emitter, env)
+        assert definition.code
+        if optimize:
+            if env.print_optimizations:
+                print(f"Optimizing builtin {definition.name}...")
+            opt = FunctionOptimizer(definition.code)
+            opt.optimize(env)
 
 
-def add_prelude(env: EvalEnv) -> None:
+def add_prelude(env: EvalEnv, optimize: bool = False) -> None:
     """Add prelude functions to the environment."""
     code = sexp.parse("""
     ;; The loop body for vector=, not to be used on its own
@@ -207,8 +217,15 @@ def add_prelude(env: EvalEnv) -> None:
     """)
     emitter = FunctionEmitter(env._global_env)
     for definition in code:
+        assert isinstance(definition, SFunction)
         emitter.visit(definition)
-        _add_func_to_env(cast(sexp.SFunction, definition), emitter, env)
+        _add_func_to_env(definition, emitter, env)
+        assert definition.code
+        if optimize:
+            if env.print_optimizations:
+                print(f"Optimizing prelude {definition.name}...")
+            opt = FunctionOptimizer(definition.code)
+            opt.optimize(env)
 
 
 eval_names = emit_IR.name_generator('__eval_expr')
@@ -226,6 +243,12 @@ def run_code(env: EvalEnv, code: SExp) -> Value:
         emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
         emitter.visit(code)
         _add_func_to_env(code, emitter, env)
+        assert code.code
+        if env.bytecode_jit:
+            if env.print_optimizations:
+                print(f"Optimizing top-level function {code.name}...")
+            opt = FunctionOptimizer(code.code)
+            opt.optimize(env)
         return env._global_env[code.name]
     else:
         name = SSym(f'{next(eval_names)}')
@@ -233,12 +256,8 @@ def run_code(env: EvalEnv, code: SExp) -> Value:
             name, [], sexp.to_slist([code]), is_lambda=True)
         emitter = FunctionEmitter(env._global_env)
         emitter.visit(code)
-        _add_func_to_env(code, emitter, env)
-
-        function = env._global_env[name]
-        assert isinstance(function, sexp.SFunction)
-        assert function.code is not None
-        gen = bytecode.ResultGenerator(function.code.run(env))
+        function = emitter.get_emitted_func()
+        gen = bytecode.ResultGenerator(function.run(env))
         gen.run()
         assert gen.value is not None
         return gen.value

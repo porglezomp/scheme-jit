@@ -745,7 +745,7 @@ class EmitFunctionDefTestCase(unittest.TestCase):
         self.function_emitter.visit(prog)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup 'trace
   v1 = typeof v0
@@ -765,18 +765,11 @@ bb0:
   v11 = call v6 (43)
   return 44
 
-wrong_arity:
-  trap 'Call with the wrong number of arguments'
-
 non_function:
   trap 'Attempted to call a non-function'
 
 wrong_arity:
   trap 'Call with the wrong number of arguments'
-
-non_function:
-  trap 'Attempted to call a non-function'
-
         '''
 
         self.assertEqual(
@@ -848,10 +841,10 @@ function (? first second) entry=bb0
 bb0:
   v0 = lookup 'assert
   v1 = lookup 'number?
-  v2 = call v1 (second) (SchemeObjectType())
-  v3 = call v0 (v2) (SchemeBoolType())
+  v2 = call v1 (second) (object)
+  v3 = call v0 (v2) (bool)
   v4 = lookup 'inst/+
-  v5 = call v4 (first, second) (SchemeNumType(), SchemeObjectType())
+  v5 = call v4 (first, second) (number, object)
   return v5
 '''
 
@@ -878,7 +871,7 @@ bb0:
 function (? first second) entry=bb0
 bb0:
   v0 = lookup 'inst/+
-  v1 = call v0 (first, second) (SchemeNumType(), SchemeNumType())
+  v1 = call v0 (first, second) (number, number)
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -905,10 +898,10 @@ function (? first second) entry=bb0
 bb0:
   v0 = lookup 'inst/+
   v1 = lookup '+
-  v2 = call v1 (1, first) (SchemeNumType(), SchemeNumType())
+  v2 = call v1 (1, first) (number, number)
   v3 = lookup '+
-  v4 = call v3 (second, 1) (SchemeNumType(), SchemeNumType())
-  v5 = call v0 (v2, v4) (SchemeNumType(), SchemeNumType())
+  v4 = call v3 (second, 1) (number, number)
+  v5 = call v0 (v2, v4) (number, number)
   return v5
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -932,10 +925,9 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'inst/load
-  v1 = call v0 (pair, 0) (SchemeVectType(length=2), SchemeNumType())
+  v1 = call v0 (pair, 0) (vector[2], number)
   v2 = lookup 'inst/store
-  v3 = call v2 (pair, 1, 42) \
-(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
+  v3 = call v2 (pair, 1, 42) (vector[2], number, number)
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -960,15 +952,13 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
-  v1 = call v0 (pair, 2) (SchemeVectType(length=2), SchemeNumType())
+  v1 = call v0 (pair, 2) (vector[2], number)
   v2 = lookup 'vector-set!
-  v3 = call v2 (pair, 2, 42) \
-(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
+  v3 = call v2 (pair, 2, 42) (vector[2], number, number)
   v4 = lookup 'vector-index
-  v5 = call v4 (pair, -1) (SchemeVectType(length=2), SchemeNumType())
+  v5 = call v4 (pair, -1) (vector[2], number)
   v6 = lookup 'vector-set!
-  v7 = call v6 (pair, -1, 42) \
-(SchemeVectType(length=2), SchemeNumType(), SchemeNumType())
+  v7 = call v6 (pair, -1, 42) (vector[2], number, number)
   return v7
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -991,11 +981,10 @@ function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
   v1 = lookup 'index
-  v2 = call v0 (pair, v1) (SchemeVectType(length=2), SchemeObjectType())
+  v2 = call v0 (pair, v1) (vector[2], object)
   v3 = lookup 'vector-set!
   v4 = lookup 'index
-  v5 = call v3 (pair, v4, 42) \
-(SchemeVectType(length=2), SchemeObjectType(), SchemeNumType())
+  v5 = call v3 (pair, v4, 42) (vector[2], object, number)
   return v5
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1017,10 +1006,9 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
-  v1 = call v0 (pair, 0) (SchemeVectType(length=None), SchemeNumType())
+  v1 = call v0 (pair, 0) (vector, number)
   v2 = lookup 'vector-set!
-  v3 = call v2 (pair, 1, 42) \
-(SchemeVectType(length=None), SchemeNumType(), SchemeNumType())
+  v3 = call v2 (pair, 1, 42) (vector, number, number)
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1042,10 +1030,9 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
-  v1 = call v0 (pair, 0) (SchemeObjectType(), SchemeNumType())
+  v1 = call v0 (pair, 0) (object, number)
   v2 = lookup 'vector-set!
-  v3 = call v2 (pair, 1, 42) \
-(SchemeObjectType(), SchemeNumType(), SchemeNumType())
+  v3 = call v2 (pair, 1, 42) (object, number, number)
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1067,10 +1054,9 @@ bb0:
 function (? pair) entry=bb0
 bb0:
   v0 = lookup 'vector-index
-  v1 = call v0 (pair, 'True) (SchemeVectType(length=2), SchemeBoolType())
+  v1 = call v0 (pair, True) (vector[2], bool)
   v2 = lookup 'vector-set!
-  v3 = call v2 (pair, 'False, 42) \
-(SchemeVectType(length=2), SchemeBoolType(), SchemeNumType())
+  v3 = call v2 (pair, False, 42) (vector[2], bool, number)
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1092,7 +1078,7 @@ bb0:
         expected = '''
 function (? func) entry=bb0
 bb0:
-  v0 = call func (42) (SchemeNumType())
+  v0 = call func (42) (number)
   return v0
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1117,7 +1103,7 @@ bb0:
   v0 = arity func
   v1 = Binop.NUM_EQ v0 2
   brn v1 wrong_arity
-  v2 = call func (42, 43) (SchemeNumType(), SchemeNumType())
+  v2 = call func (42, 43) (number, number)
   return v2
 
 wrong_arity:
@@ -1145,7 +1131,7 @@ bb0:
   v0 = arity func
   v1 = Binop.NUM_EQ v0 1
   brn v1 wrong_arity
-  v2 = call func (42) (SchemeNumType())
+  v2 = call func (42) (number)
   return v2
 
 wrong_arity:
@@ -1163,10 +1149,10 @@ wrong_arity:
         optimized = self.get_optimized_func_bytecode(code)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup '__lambda0
-  v1 = call v0 (42) (SchemeNumType())
+  v1 = call v0 (42) (number)
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1181,13 +1167,13 @@ bb0:
         optimized = self.get_optimized_func_bytecode(code)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup '__lambda0
   v1 = arity v0
   v2 = Binop.NUM_EQ v1 2
   brn v2 wrong_arity
-  v3 = call v0 (42, 43) (SchemeNumType(), SchemeNumType())
+  v3 = call v0 (42, 43) (number, number)
   return v3
 
 wrong_arity:
@@ -1202,7 +1188,7 @@ wrong_arity:
         optimized = self.get_optimized_func_bytecode(code)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup 'spam
   v1 = call v0 ()
@@ -1217,13 +1203,13 @@ bb0:
         optimized = self.get_optimized_func_bytecode(code)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup 'spam
   v1 = arity v0
   v2 = Binop.NUM_EQ v1 1
   brn v2 wrong_arity
-  v3 = call v0 (42) (SchemeNumType())
+  v3 = call v0 (42) (number)
   return v3
 
 wrong_arity:
@@ -1238,10 +1224,10 @@ wrong_arity:
         optimized = self.get_optimized_func_bytecode(code)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup '+
-  v1 = call v0 (3, 4) (SchemeNumType(), SchemeNumType())
+  v1 = call v0 (3, 4) (number, number)
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1253,13 +1239,13 @@ bb0:
         optimized = self.get_optimized_func_bytecode(code)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup 'bool?
   v1 = arity v0
   v2 = Binop.NUM_EQ v1 2
   brn v2 wrong_arity
-  v3 = call v0 (3, 4) (SchemeNumType(), SchemeNumType())
+  v3 = call v0 (3, 4) (number, number)
   return v3
 
 wrong_arity:
@@ -1275,13 +1261,13 @@ wrong_arity:
             code, optimize_tail_calls=True)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup 'spam
   v1 = arity v0
   v2 = Binop.NUM_EQ v1 1
   brn v2 wrong_arity
-  v3 = call v0 (42) (SchemeNumType())
+  v3 = call v0 (42) (number)
   return v3
 
 wrong_arity:
@@ -1324,7 +1310,7 @@ bb0:
 function (? egg) entry=bb0
 bb0:
   v0 = lookup '+
-  v1 = call v0 (egg, 1) (SchemeNumType(), SchemeNumType())
+  v1 = call v0 (egg, 1) (number, number)
   egg = v1
   jmp bb0
   return 0
@@ -1348,7 +1334,7 @@ bb0:
 function (? egg) entry=bb0
 bb0:
   v0 = lookup 'spam
-  v1 = call v0 ('True) (SchemeBoolType())
+  v1 = call v0 (True) (bool)
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1401,8 +1387,8 @@ function (? func) entry=bb0
 bb0:
   v0 = lookup 'assert
   v1 = lookup 'function?
-  v2 = call v1 (func) (SchemeObjectType())
-  v3 = call v0 (v2) (SchemeBoolType())
+  v2 = call v1 (func) (object)
+  v3 = call v0 (v2) (bool)
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1487,8 +1473,8 @@ function (? egg) entry=bb0
 bb0:
   v0 = lookup 'assert
   v1 = lookup 'vector?
-  v2 = call v1 (egg) (SchemeObjectType())
-  v3 = call v0 (v2) (SchemeBoolType())
+  v2 = call v1 (egg) (object)
+  v3 = call v0 (v2) (bool)
   return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1520,7 +1506,7 @@ bb0:
 function (? x y) entry=bb0
 bb0:
   v0 = lookup 'number=
-  v1 = call v0 (x, y) (SchemeNumType(), SchemeNumType())
+  v1 = call v0 (x, y) (number, number)
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1538,7 +1524,7 @@ bb0:
 function (? x y) entry=bb0
 bb0:
   v0 = lookup 'symbol=
-  v1 = call v0 (x, y) (SchemeSymType(), SchemeSymType())
+  v1 = call v0 (x, y) (symbol, symbol)
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1557,7 +1543,7 @@ bb0:
 function (? x y) entry=bb0
 bb0:
   v0 = lookup 'vector=
-  v1 = call v0 (x, y) (SchemeVectType(length=3), SchemeVectType(length=1))
+  v1 = call v0 (x, y) (vector[3], vector[1])
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1575,7 +1561,7 @@ bb0:
 function (? x y) entry=bb0
 bb0:
   v0 = lookup 'pointer=
-  v1 = call v0 (x, y) (SchemeBoolType(), SchemeBoolType())
+  v1 = call v0 (x, y) (bool, bool)
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1594,9 +1580,7 @@ bb0:
 function (? x y) entry=bb0
 bb0:
   v0 = lookup 'pointer=
-  v1 = call v0 (x, y) \
-(SchemeFunctionType(arity=1, return_type=SchemeObjectType()),\
- SchemeFunctionType(arity=2, return_type=SchemeObjectType()))
+  v1 = call v0 (x, y) (function[1, object], function[2, object])
   return v1
         '''
         self.assertEqual(expected.strip(), optimized.strip())
@@ -1613,7 +1597,7 @@ bb0:
         expected = '''
 function (? x y) entry=bb0
 bb0:
-  return 'False
+  return False
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
