@@ -161,7 +161,13 @@ def add_builtins(env: EvalEnv, optimize: bool = False) -> None:
         (inst/alloc 0)
         (vector-make/recur n 0 (inst/alloc n) x)))
     """)
-    emitter = FunctionEmitter(env._global_env)
+    tail_calls = None
+    if env.optimize_tail_calls:
+        tail_call_finder = TailCallFinder()
+        tail_call_finder.visit(code)
+        tail_calls = tail_call_finder.tail_calls
+
+    emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
     for definition in code:
         assert isinstance(definition, SFunction)
         emitter.visit(definition)
@@ -215,7 +221,13 @@ def add_prelude(env: EvalEnv, optimize: bool = False) -> None:
     (define (car l) (vector-index l 0))
     (define (cdr l) (vector-index l 1))
     """)
-    emitter = FunctionEmitter(env._global_env)
+    tail_calls = None
+    if env.optimize_tail_calls:
+        tail_call_finder = TailCallFinder()
+        tail_call_finder.visit(code)
+        tail_calls = tail_call_finder.tail_calls
+
+    emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
     for definition in code:
         assert isinstance(definition, SFunction)
         emitter.visit(definition)
