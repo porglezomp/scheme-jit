@@ -95,6 +95,27 @@ class TailCallFinderTestCase(unittest.TestCase):
         self.assert_symbol_in_tail_calls(
             sexp.SSym('fib-tail-impl'), self.finder.tail_calls)
 
+    def test_no_tail_calls_in_lambdas_dlist_code(self) -> None:
+        prog = sexp.parse('''
+        (define (dlist-push-front dlist datum)
+            (if (dlist-empty dlist)
+                ((lambda (dlist new-node)
+                    (dlist-set-first! dlist new-node)
+                    (dlist-set-last! dlist new-node)
+                ) dlist (node-make datum 0 0))
+
+                ((lambda (dlist current-first new-node)
+                    (node-set-prev! current-first new-node)
+                    (dlist-set-first! dlist new-node)
+                ) dlist (dlist-first dlist) (node-make datum 0
+                                            (dlist-first dlist)))
+            )
+        )
+        ''')
+
+        self.finder.visit(prog)
+        self.assertEqual(0, len(self.finder.tail_calls))
+
     def assert_symbol_in_tail_calls(self, sym: sexp.SSym,
                                     tail_calls: List[TailCallData]) -> None:
         for call_data in tail_calls:

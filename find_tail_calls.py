@@ -51,8 +51,10 @@ class TailCallFinder(Visitor):
         if self._current_function is None:
             return
 
-        if (isinstance(call.func, sexp.SSym)
-                and call.func != self._current_function.name):
+        if not isinstance(call.func, sexp.SSym):
+            return
+
+        if call.func != self._current_function.name:
             return
 
         self._tail_calls.append(
