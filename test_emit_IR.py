@@ -1283,7 +1283,7 @@ wrong_arity:
             code, optimize_tail_calls=True)
 
         expected = '''
-function (? ) entry=bb0
+function (?) entry=bb0
 bb0:
   v0 = lookup 'spam
   v1 = typeof v0
@@ -1295,11 +1295,11 @@ bb0:
   v5 = call v0 (42)
   return v5
 
-wrong_arity:
-  trap 'Call with the wrong number of arguments'
-
 non_function:
   trap 'Attempted to call a non-function'
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
@@ -1362,6 +1362,16 @@ bb0:
   br v17 bb1
   jmp bb2
 
+non_function:
+  trap 'Attempted to call a non-function'
+
+wrong_arity:
+  trap 'Call with the wrong number of arguments'
+
+bb1:
+  v18 = v
+  jmp bb3
+
 bb2:
   v19 = lookup '+
   v20 = typeof v19
@@ -1378,34 +1388,6 @@ bb2:
 
 bb3:
   return v18
-
-wrong_arity:
-  trap 'Call with the wrong number of arguments'
-
-non_function:
-  trap 'Attempted to call a non-function'
-
-bb1:
-  v18 = v
-  jmp bb3
-
-wrong_arity:
-  trap 'Call with the wrong number of arguments'
-
-non_function:
-  trap 'Attempted to call a non-function'
-
-wrong_arity:
-  trap 'Call with the wrong number of arguments'
-
-non_function:
-  trap 'Attempted to call a non-function'
-
-wrong_arity:
-  trap 'Call with the wrong number of arguments'
-
-non_function:
-  trap 'Attempted to call a non-function'
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
@@ -1436,6 +1418,7 @@ bb0:
         self.assertEqual(expected.strip(), optimized.strip())
 
     def test_tail_call_in_specialized_vector_make_recur(self) -> None:
+        self.maxDiff = None
         code = '''
             (define (vector-make/recur len idx v x)
                 (vector-set! v idx x)
@@ -1459,18 +1442,21 @@ bb0:
 function (? len idx v x) entry=bb0
 bb0:
   v0 = lookup 'vector-set!
-  v1 = call v0 (v, idx, x) \
-(SchemeVectType(length=None), SchemeNumType(), SchemeNumType())
+  v1 = call v0 (v, idx, x) (vector, number, number)
   v2 = lookup 'number=
   v3 = lookup '+
-  v4 = call v3 (idx, 1) (SchemeNumType(), SchemeNumType())
-  v5 = call v2 (len, v4) (SchemeNumType(), SchemeNumType())
+  v4 = call v3 (idx, 1) (number, number)
+  v5 = call v2 (len, v4) (number, number)
   br v5 bb1
   jmp bb2
 
+bb1:
+  v6 = v
+  jmp bb3
+
 bb2:
   v7 = lookup '+
-  v8 = call v7 (idx, 1) (SchemeNumType(), SchemeNumType())
+  v8 = call v7 (idx, 1) (number, number)
   idx = v8
   jmp bb0
   v6 = 0
@@ -1478,10 +1464,6 @@ bb2:
 
 bb3:
   return v6
-
-bb1:
-  v6 = v
-  jmp bb3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
