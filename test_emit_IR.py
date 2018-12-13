@@ -1751,6 +1751,30 @@ bb0:
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
+    def test_remove_branch(self) -> None:
+        optimized = self.get_optimized_func_bytecode(
+            '(define (f x) (if false 1 (if x 2 3)))',
+            param_types={}
+        )
+        expected = '''
+function (? x) entry=bb0
+bb0:
+  br x bb1
+  jmp bb2
+
+bb1:
+  v0 = 2
+  jmp bb3
+
+bb2:
+  v0 = 3
+  jmp bb3
+
+bb3:
+  return v0
+        '''
+        self.assertEqual(expected.strip(), optimized.strip())
+
 
 _EQUAL_CODE = '''
     (define (equal x y)
