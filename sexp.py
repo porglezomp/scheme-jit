@@ -267,8 +267,8 @@ class SFunction(Value):
             return self.code
         return self.specializations.get(types, self.code)
 
-    def to_param(self) -> bytecode.FuncLit:
-        return bytecode.FuncLit(self)
+    def to_param(self) -> None:
+        return None
 
 
 @dataclass(frozen=True)

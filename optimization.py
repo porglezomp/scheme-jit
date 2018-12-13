@@ -5,10 +5,10 @@ from typing import DefaultDict, Dict, Iterator, List, Optional, Set, Tuple
 
 import bytecode
 from bytecode import (BasicBlock, BoolLit, BrInst, BrnInst, CallInst, CopyInst,
-                      EvalEnv, FuncLit, Function, Inst, JmpInst, LookupInst,
-                      Parameter, ReturnInst, SymLit, TrapInst, TypeMap,
-                      TypeTuple, ValueMap, Var)
-from scheme_types import SchemeObject
+                      EvalEnv, Function, Inst, JmpInst, LookupInst, Parameter,
+                      ReturnInst, SymLit, TrapInst, TypeMap, TypeTuple,
+                      ValueMap, Var)
+from scheme_types import SchemeObject, SchemeObjectType
 from sexp import SBool, SFunction, SSym, Value
 
 Id = int
@@ -20,11 +20,17 @@ class FunctionOptimizer:
     func: Function
     prefix_counter: int = 0
     specialization: Optional[TypeTuple] = None
+    inputs: Optional[Tuple[Optional[Value], ...]] = None
     succs: Optional[DefaultDict[Id, List[Edge]]] = None
     preds: Optional[DefaultDict[Id, List[Edge]]] = None
     dominators: Optional[Dict[int, Set[BasicBlock]]] = None
     domtree: Optional[Dict[int, List[BasicBlock]]] = None
     info: Optional[Dict[int, List[Tuple[TypeMap, ValueMap]]]] = None
+    inlines: Dict[Id, Tuple[BasicBlock, Dict[int, Function]]] = (
+        field(default_factory=dict)
+    )
+    result: Optional[Tuple[SchemeObjectType, Optional[Value]]] = None
+    banned_from_inline: Set[SSym] = field(default_factory=set)
 
     def compute_preds(self) -> None:
         if not self.succs:
@@ -45,38 +51,46 @@ class FunctionOptimizer:
                 for succ in inst.successors():
                     self.succs[id(block)].append((block, i, succ))
 
-    def compute_dominators(self) -> None:
-        raise NotImplementedError("dominators")
-
-    def compute_domtree(self) -> None:
-        if not self.dominators:
-            self.compute_dominators()
-        raise NotImplementedError("domtree")
-
-    def dom_order_blocks(self) -> Iterator[BasicBlock]:
-        """
-        Iterate over the basic blocks.
-
-        Visits them in a breadth-first traversal of the dominator tree.
-        """
-        if not self.domtree:
-            self.compute_domtree()
-        assert self.domtree
-        blocks: Queue[BasicBlock] = Queue()
-        blocks.put(self.func.start)
-        while not blocks.empty():
-            block = blocks.get()
-            yield block
-            for b in self.domtree[id(block)]:
-                blocks.put(b)
-
     def block_transfer(
-        self, block: BasicBlock, types: TypeMap, values: ValueMap,
+            self, env: EvalEnv, block: BasicBlock,
+            types: TypeMap, values: ValueMap,
     ) -> List[Tuple[TypeMap, ValueMap]]:
         abstract = []
         for i, inst in enumerate(block.instructions):
             abstract.append((copy.copy(types), copy.copy(values)))
-            inst.run_abstract(types, values)
+            inst.run_abstract(env, types, values)
+            block.instructions[i] = inst.constant_fold(types, values)
+            if isinstance(inst, CallInst):
+                func = values[inst.func]
+                if (isinstance(func, SFunction)
+                    and self.should_inline(func, inst.specialization)
+                ):  # noqa
+                    code = func.get_specialized(inst.specialization)
+                    code = copy.deepcopy(code)
+                    opt = FunctionOptimizer(code)
+                    opt.specialization = inst.specialization
+                    opt.inputs = tuple(values[x] for x in inst.args)
+                    opt.banned_from_inline = (
+                        self.banned_from_inline | {func.name}
+                    )
+                    opt.optimize(env)
+                    if opt.result is not None:
+                        ty, val = opt.result
+                        types[inst.dest] = ty
+                        values[inst.dest] = val
+                    if id(block) not in self.inlines:
+                        self.inlines[id(block)] = (block, {})
+                    self.inlines[id(block)][1][i] = code
+            if isinstance(inst, ReturnInst):
+                ret_ty = types[inst.ret]
+                ret_val = values[inst.ret]
+                if self.result is None:
+                    self.result = (ret_ty, ret_val)
+                else:
+                    self.result = (
+                        self.result[0].join(ret_ty),
+                        self.result[1] if self.result[1] == ret_val else None
+                    )
         abstract.append((copy.copy(types), copy.copy(values)))
         return abstract
 
@@ -93,10 +107,21 @@ class FunctionOptimizer:
             else:
                 pred_maps.append((TypeMap(), ValueMap()))
 
-        if block is self.func.start and self.specialization is not None:
-            assert len(self.func.params) == len(self.specialization)
-            types = TypeMap(dict(zip(self.func.params, self.specialization)))
-            pred_maps.append((types, ValueMap()))
+        # Handle the specialization and known inputs of the function
+        if block is self.func.start:
+            types, values = TypeMap(), ValueMap()
+            if self.specialization is not None:
+                assert len(self.func.params) == len(self.specialization)
+                types = TypeMap(dict(zip(self.func.params,
+                                         self.specialization)))
+            if self.inputs is not None:
+                assert len(self.func.params) == len(self.inputs)
+                values = ValueMap({
+                    param: value
+                    for param, value in zip(self.func.params, self.inputs)
+                    if value is not None
+                })
+            pred_maps.append((types, values))
 
         # Join all of those maps
         if pred_maps:
@@ -108,7 +133,7 @@ class FunctionOptimizer:
             types, values = TypeMap(), ValueMap()
         return types, values
 
-    def compute_dataflow(self) -> None:
+    def dataflow(self, env: EvalEnv) -> None:
         if not self.preds:
             self.compute_preds()
         assert self.preds
@@ -117,29 +142,9 @@ class FunctionOptimizer:
 
         for block in self.func.blocks():
             types, values = self.block_input_maps(block)
-            self.info[id(block)] = self.block_transfer(block, types, values)
-
-    def apply_constant_info(self) -> None:
-        if not self.info:
-            self.compute_dataflow()
-        assert self.info
-        for block in self.func.blocks():
-            info_map = self.info[id(block)]
-            for i, inst in enumerate(block.instructions):
-                types, values = info_map[i]
-                block.instructions[i] = inst.constant_fold(types, values)
-
-    def find_lookups(self) -> Iterator[Tuple[BasicBlock, int, LookupInst]]:
-        for block in self.func.blocks():
-            for i, inst in enumerate(block.instructions):
-                if isinstance(inst, LookupInst):
-                    yield block, i, inst
-
-    def find_calls(self) -> Iterator[Tuple[BasicBlock, int, CallInst]]:
-        for block in self.func.blocks():
-            for i, inst in enumerate(block.instructions):
-                if isinstance(inst, CallInst):
-                    yield block, i, inst
+            self.info[id(block)] = self.block_transfer(
+                env, block, types, values)
+        self.apply_inlining(env)
 
     def remove_dead_code(self) -> None:
         for block in self.func.blocks():
@@ -181,32 +186,22 @@ class FunctionOptimizer:
                 inst.freshen(prefix)
         return func
 
-    def seed_inlining(self, env: EvalEnv) -> None:
-        for b, i, l in self.find_lookups():
-            if isinstance(l.name, SymLit):
-                func = env._global_env.get(l.name.value, None)
-                if func is None:
-                    # @TODO: A scheme that will allow us to recompile
-                    # functions once a called function is available for
-                    # inlining.
-                    continue
-                assert isinstance(func, SFunction)
-                b.instructions[i] = bytecode.CopyInst(l.dest, FuncLit(func))
-
-    def inline(self, env: EvalEnv) -> None:
-        for block in self.func.blocks():
-            for i in reversed(range(len(block.instructions))):
+    def apply_inlining(self, env: EvalEnv) -> None:
+        did_inline = False
+        for block, inls in self.inlines.values():
+            last_i = None
+            for i, func in reversed(sorted(inls.items())):
+                did_inline = True
                 inst = block.instructions[i]
-                if not isinstance(inst, CallInst):
-                    continue
-                if not isinstance(inst.func, FuncLit):
-                    continue
+                assert isinstance(inst, CallInst)
+                if last_i is not None:
+                    assert i < last_i
+                last_i = i
+                func = self.mark_vars(func)
                 next_block = block.split_after(i)
-                func_code = inst.func.func.get_specialized(inst.specialization)
-                func_code = self.mark_vars(func_code)
                 # We precompute the list so it doesn't change as we modify
                 # control flow.
-                func_blocks = list(func_code.blocks())
+                func_blocks = list(func.blocks())
                 for b in func_blocks:
                     for j, ret in enumerate(b.instructions):
                         if isinstance(ret, ReturnInst):
@@ -214,12 +209,13 @@ class FunctionOptimizer:
                             b.instructions.insert(j+1, JmpInst(next_block))
                 block.instructions.pop()  # Remove the jmp
                 block.instructions.pop()  # Remove the call
-                for dst, src in zip(func_code.params, inst.args):
+                for dst, src in zip(func.params, inst.args):
                     block.instructions.append(CopyInst(dst, src))
-                block.instructions.append(JmpInst(func_code.start))
-        self.preds = None
-        self.succs = None
-        self.info = None
+                block.instructions.append(JmpInst(func.start))
+        if did_inline:
+            self.preds = None
+            self.succs = None
+            self.info = None
 
     def copy_propagate_block(self, block: BasicBlock) -> None:
         copies: Dict[Var, Parameter] = {}
@@ -275,16 +271,6 @@ class FunctionOptimizer:
         # @TODO: Repair dataflow info instead of invalidating it all?
         self.info = None
 
-    def legalize(self) -> None:
-        for block in self.func.blocks():
-            for i, inst in enumerate(block.instructions):
-                if isinstance(inst, CopyInst):
-                    if isinstance(inst.value, FuncLit):
-                        block.instructions[i] = LookupInst(
-                            inst.dest, SymLit(inst.value.func.name))
-                assert not any(isinstance(p, FuncLit)
-                               for p in block.instructions[i].params())
-
     def fmt_inst(self, inst: Inst, types: TypeMap, values: ValueMap) -> str:
         bindings = []
         for param in inst.params():
@@ -315,35 +301,30 @@ class FunctionOptimizer:
             print()
 
     def optimize(self, env: EvalEnv) -> None:
-        self.seed_inlining(env)
-        self.compute_dataflow()
-        self.apply_constant_info()
-        self.remove_dead_code()
-        self.inline(env)
+        self.dataflow(env)
         self.merge_blocks()
-        self.compute_dataflow()
-        self.apply_constant_info()
-        self.remove_dead_code()
-        self.merge_blocks()
-        self.legalize()
         self.copy_propagate()
         self.remove_dead_code()
 
-
-def should_inline(name: SSym, func: Function) -> bool:
-    # @TODO: An actual inlining heuristic!
-    SHOULD_INLINE = (
-        'trap', 'trace', 'breakpoint', 'assert', 'typeof',
-        'number?', 'symbol?', 'vector?', 'function?', 'bool?',
-        'pair?', 'nil?',
-        # 'not',
-        # '+', '-', '*', '/', '%',
-        # 'pointer=',
-        'symbol=',
-        # 'number=',
-        # 'number<',
-        # 'vector-length', 'vector-index', 'vector-set!',
-        # '<', '!=', '>', '<=', '>=',
-        # 'cons', 'car', 'cdr',
-    )
-    return name.name.startswith('inst/') or name.name in SHOULD_INLINE
+    def should_inline(
+            self, func: SFunction, types: Optional[TypeTuple]
+    ) -> bool:
+        if func.name in self.banned_from_inline:
+            return False
+        name = func.name.name
+        if name.startswith('inst/'):
+            return True
+        # @TODO: An actual inlining heuristic!
+        SHOULD_INLINE = (
+            'trap', 'trace', 'breakpoint', 'assert', 'typeof',
+            'number?', 'symbol?', 'vector?', 'function?', 'bool?',
+            'not',
+            'pair?', 'nil?',
+            'symbol=',
+            # '+', '-', '*', '/', '%',
+            # 'pointer=', 'number=', 'number<',
+            # 'vector-length', 'vector-index', 'vector-set!',
+            # '<', '!=', '>', '<=', '>=',
+            # 'cons', 'car', 'cdr',
+        )
+        return name in SHOULD_INLINE

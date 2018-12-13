@@ -5,8 +5,8 @@ from typing import DefaultDict, Tuple
 import bytecode
 import runner
 import sexp
-from bytecode import (BasicBlock, Binop, FuncLit, Function, NumLit, SymLit,
-                      TypeMap, ValueMap, Var)
+from bytecode import (BasicBlock, Binop, Function, NumLit, SymLit, TypeMap,
+                      ValueMap, Var)
 from optimization import FunctionOptimizer
 from scheme_types import SchemeNum, SchemeObject, SchemeSym
 from sexp import SFunction, SNum, SSym
@@ -128,7 +128,8 @@ inl0@bb1:
     def test_block_transfer(self) -> None:
         func = make_func()
         opt = FunctionOptimizer(func)
-        data = opt.block_transfer(func.start, TypeMap(), ValueMap())
+        data = opt.block_transfer(
+            bytecode.EvalEnv(), func.start, TypeMap(), ValueMap())
         self.assertEqual(data, [
             (TypeMap(), ValueMap()),
             (TypeMap({Var('v0'): SchemeNum}),
@@ -143,7 +144,7 @@ inl0@bb1:
         func, blocks = make_branch_func_int()
         bb0, bb1, bb2, bb3 = blocks
         opt = FunctionOptimizer(func)
-        opt.compute_dataflow()
+        opt.dataflow(bytecode.EvalEnv())
         after_0 = (TypeMap({Var('v0'): SchemeNum}),
                    ValueMap({Var('v0'): SNum(42)}))
         self.assertEqual(opt.block_input_maps(bb1), after_0)
@@ -178,7 +179,7 @@ inl0@bb1:
         func, blocks = make_branch_func_object()
         bb0, bb1, bb2, bb3 = blocks
         opt = FunctionOptimizer(func)
-        opt.compute_dataflow()
+        opt.dataflow(bytecode.EvalEnv())
         after_0 = (TypeMap({Var('v0'): SchemeNum}),
                    ValueMap({Var('v0'): SNum(42)}))
         self.assertEqual(opt.block_input_maps(bb1), after_0)
@@ -221,17 +222,17 @@ function (? a b) entry=bb0
 bb0:
   inl4@inl1@inl0@result = typeof a
   inl4@inl0@inl0@result = Binop.SYM_EQ inl4@inl1@inl0@result 'number
-  brn inl4@inl0@inl0@result inl3@bb0.split0
+  brn inl4@inl0@inl0@result bb0.split5
   inl2@inl1@inl0@result = typeof b
   inl2@inl0@inl0@result = Binop.SYM_EQ inl2@inl1@inl0@result 'number
-  brn inl2@inl0@inl0@result inl1@bb0.split0
+  brn inl2@inl0@inl0@result bb0.split6
   inl0@result = Binop.ADD a b
   return inl0@result
 
-inl3@bb0.split0:
+bb0.split5:
   trap '(trap)'
 
-inl1@bb0.split0:
+bb0.split6:
   trap '(trap)'
 '''.strip())
 
@@ -245,3 +246,21 @@ bb0:
   inl0@result = Binop.ADD a b
   return inl0@result
 '''.strip())
+
+    def test_specialize_value(self) -> None:
+        env = get_builtins()
+        func = env._global_env[SSym('+')]
+        assert isinstance(func, sexp.SFunction)
+        assert func.code
+
+        code = copy.deepcopy(func.code)
+        opt = FunctionOptimizer(code)
+        opt.specialization = (SchemeNum, SchemeNum)
+        opt.inputs = (SNum(42), SNum(27))
+        opt.optimize(env)
+
+        self.assertEqual(str(code), '''
+function (? a b) entry=bb0
+bb0:
+  return 69
+        '''.strip())
