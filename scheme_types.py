@@ -49,10 +49,8 @@ SchemeBottom = SchemeBottomType()
 
 
 class SchemeValueType(SchemeObjectType):
-    # @abstractmethod
     def type_name(self) -> sexp.SSym:
         raise NotImplementedError
-        # return sexp.SSym('pointer')
 
 
 @dataclass(frozen=True)
@@ -313,6 +311,7 @@ class FunctionTypeAnalyzer(Visitor):
             self.set_expr_type(sym, SchemeObject)
 
     def visit_SVect(self, vect: sexp.SVect) -> None:
+        super().visit_SVect(vect)
         self.set_expr_type(vect, SchemeVectType(len(vect.items)))
 
     def visit_Quote(self, quote: sexp.Quote) -> None:
@@ -361,6 +360,8 @@ _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
     sexp.SSym('inst/typeof'):  SchemeFunctionType(1, SchemeSym),
     sexp.SSym('inst/trap'): SchemeFunctionType(0, SchemeBottom),
     sexp.SSym('inst/trace'): SchemeFunctionType(1, SchemeNum),
+    sexp.SSym('inst/display'): SchemeFunctionType(1, SchemeNum),
+    sexp.SSym('inst/newline'): SchemeFunctionType(0, SchemeNum),
     sexp.SSym('inst/breakpoint'): SchemeFunctionType(0, SchemeNum),
     sexp.SSym('inst/alloc'): SchemeFunctionType(1, SchemeVectType(None)),
     sexp.SSym('inst/load'): SchemeFunctionType(2, SchemeObject),
@@ -379,6 +380,7 @@ _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
 
     sexp.SSym('trap'): SchemeFunctionType(0, SchemeBottom),
     sexp.SSym('trace'): SchemeFunctionType(1, SchemeNum),
+    sexp.SSym('display'): SchemeFunctionType(1, SchemeNum),
     sexp.SSym('breakpoint'): SchemeFunctionType(0, SchemeNum),
     sexp.SSym('assert'): SchemeFunctionType(1, SchemeNum),
     sexp.SSym('typeof'): SchemeFunctionType(1, SchemeSym),

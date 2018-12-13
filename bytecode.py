@@ -1213,6 +1213,68 @@ class TraceInst(Inst):
 
 
 @dataclass
+class DisplayInst(Inst):
+    value: Parameter
+
+    def run(self, env: EvalEnv) -> None:
+        print(env[self.value], end='')
+
+    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+        pass
+
+    def __str__(self) -> str:
+        return f"display {self.value}"
+
+    def freshen(self, prefix: str) -> None:
+        self.value = self.value.freshen(prefix)
+
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> DisplayInst:
+        return DisplayInst(values.get_param(self.value))
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> DisplayInst:
+        return DisplayInst(get_value(values, self.value))
+
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return [self.value]
+
+    def pure(self) -> bool:
+        return False
+
+
+@dataclass
+class NewlineInst(Inst):
+    def run(self, env: EvalEnv) -> None:
+        print()
+
+    def run_abstract(self, types: TypeMap, values: ValueMap) -> None:
+        pass
+
+    def __str__(self) -> str:
+        return f"newline"
+
+    def freshen(self, prefix: str) -> None:
+        pass
+
+    def constant_fold(self, types: TypeMap, values: ValueMap) -> NewlineInst:
+        return NewlineInst()
+
+    def copy_prop(self, values: Dict[Var, Parameter]) -> NewlineInst:
+        return NewlineInst()
+
+    def dests(self) -> List[Var]:
+        return []
+
+    def params(self) -> List[Parameter]:
+        return []
+
+    def pure(self) -> bool:
+        return False
+
+
+@dataclass
 class BreakpointInst(Inst):
     def run(self, env: EvalEnv) -> None:
         breakpoint()

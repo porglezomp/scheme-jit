@@ -42,6 +42,12 @@ def add_intrinsics(eval_env: EvalEnv) -> None:
     env[SSym('inst/trace')] = inst_function(
         SSym('inst/trace'), [Var('x')], bytecode.NumLit(sexp.SNum(0)),
         bytecode.TraceInst(Var('x')))
+    env[SSym('inst/display')] = inst_function(
+        SSym('inst/display'), [Var('x')], bytecode.NumLit(sexp.SNum(0)),
+        bytecode.DisplayInst(Var('x')))
+    env[SSym('inst/newline')] = inst_function(
+        SSym('inst/newline'), [], bytecode.NumLit(sexp.SNum(0)),
+        bytecode.NewlineInst())
     env[SSym('inst/breakpoint')] = inst_function(
         SSym('inst/breakpoint'), [], bytecode.NumLit(sexp.SNum(0)),
         bytecode.BreakpointInst())
@@ -75,6 +81,8 @@ def add_builtins(env: EvalEnv) -> None:
     run(env, """
     (define (trap) (inst/trap))
     (define (trace x) (inst/trace x))
+    (define (display x) (inst/display x))
+    (define (newline) (inst/newline))
     (define (breakpoint) (inst/breakpoint))
     (define (assert b) (if b 0 (trap)))
     (define (typeof x) (inst/typeof x))

@@ -1,13 +1,16 @@
 from typing import List, Union
 
-from sexp import (Nil, Quote, SBegin, SBool, SCall, SConditional, SExp,
-                  SFunction, SNum, SPair, SSym, SVect)
+from sexp import (Nil, NilType, Quote, SBegin, SBool, SCall, SConditional,
+                  SExp, SFunction, SNum, SPair, SSym, SVect)
 
 
 class Visitor:
     """Base class for traversing scheme programs."""
 
     def visit(self, expr: Union[List[SExp], SExp]) -> None:
+        if expr is Nil:
+            return
+
         if isinstance(expr, list):
             for item in expr:
                 self.visit(item)
