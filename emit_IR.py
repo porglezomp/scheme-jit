@@ -117,9 +117,14 @@ class ExpressionEmitter(Visitor):
             func_emitter.visit(func)
             func.code = func_emitter.get_emitted_func()
 
-            assert func.name not in self.global_env, (
-                f"Duplicate function name: {func.name}")
-            self.global_env[func.name] = func
+            if func.name in self.global_env:
+                looked_up_func = self.global_env[func.name]
+                if isinstance(looked_up_func, sexp.SFunction):
+                    assert func.code == looked_up_func.code
+                else:
+                    assert False, f"Duplicate function name: {func.name}"
+            else:
+                self.global_env[func.name] = func
 
         lambda_var = bytecode.Var(next(self.var_names))
         lookup_lambda_instr = bytecode.LookupInst(
@@ -489,36 +494,6 @@ class ExpressionEmitter(Visitor):
             self.end_block = arg_emitter.end_block
 
         return args
-
-    # def _is_true_type_query(self, query: sexp.SExp) -> bool:
-    #     if self._expr_types is None:
-    #         return False
-
-    #     if not isinstance(query, sexp.SCall):
-    #         return False
-
-    #     if query.func not in self._TYPE_QUERIES:
-    #         return False
-
-    #     if len(query.args) != 1:
-    #         return False
-
-    #     type_query_arg = query.args[0]
-    #     if not self._expr_types.expr_type_known(type_query_arg):
-    #         return False
-
-    #     return (self._expr_types.get_expr_type(type_query_arg)
-    #             < self._TYPE_QUERIES[cast(sexp.SSym, query.func)])
-
-    # _TYPE_QUERIES: Dict[sexp.SSym, scheme_types.SchemeObjectType] = {
-    #     sexp.SSym('number?'): scheme_types.SchemeNum,
-    #     sexp.SSym('symbol?'): scheme_types.SchemeSym,
-    #     sexp.SSym('vector?'): scheme_types.SchemeVectType(None),
-    #     sexp.SSym('function?'): scheme_types.SchemeFunctionType(None),
-    #     sexp.SSym('bool?'): scheme_types.SchemeBool,
-    #     sexp.SSym('pair?'): scheme_types.SchemeVectType(2),
-    #     sexp.SSym('nil?'): scheme_types.SchemeVectType(0),
-    # }
 
     def _add_is_function_check(
             self, function_expr: bytecode.Parameter,

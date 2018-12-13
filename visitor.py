@@ -6,7 +6,6 @@ from sexp import (Nil, NilType, Quote, SBegin, SBool, SCall, SConditional,
 
 class Visitor:
     """Base class for traversing scheme programs."""
-
     def visit(self, expr: Union[List[SExp], SExp]) -> None:
         if expr is Nil:
             return
