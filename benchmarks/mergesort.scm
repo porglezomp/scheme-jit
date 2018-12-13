@@ -92,7 +92,7 @@
 )
 
 (define (or a b)
-    (if a true b)
+    (if a a b)
 )
 
 ; Tests for the pieces

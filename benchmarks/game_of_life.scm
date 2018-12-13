@@ -118,7 +118,7 @@
 
 (define (print-header cols index)
   (if (< index (+ cols 2))
-      (begin (display 5)
+      (begin (display '-)
              (print-header cols (+ index 1))
       )
       (newline)
@@ -127,9 +127,9 @@
 
 (define (print-grid-helper rows cols current-row grid)
   (if (<= current-row rows)
-      (begin (display 5)
+      (begin (display '|)
              (print-grid-row rows cols current-row 1 grid)
-             (display 5)
+             (display '|)
              (newline)
              (print-grid-helper rows cols (+ current-row 1) grid)
       )
@@ -140,11 +140,12 @@
 (define (print-grid-row rows cols current-row current-col grid)
   (if (<= current-col cols)
       (begin (display
-                        (grid-get grid rows cols
+                (vector-index ['_ '*]
+                            (grid-get grid rows cols
                                     current-row current-col
-                        )
-
-             )
+                            )
+                )
+              )
              (print-grid-row rows cols current-row (+ current-col 1) grid)
       )
       0

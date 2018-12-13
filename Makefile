@@ -20,9 +20,8 @@ all: $(benchmark_targets)
 %.bench:
 	@echo $@
 	@mkdir -p data
-	@(time ./scheme.py $(FLAGS) \
-		-fsa -m -o data/$*_$(FLAGS).json \
-		benchmarks/$*.scm > benchmarks/$*.out) 2> data/$*_$(FLAGS).time
+	./scheme.py $(FLAGS) \
+		-fsa -m -o data/$*_$(FLAGS).json benchmarks/$*.scm > benchmarks/$*.out
 	@diff -q benchmarks/$*.correct benchmarks/$*.out
 
 .PHONY: all clean
