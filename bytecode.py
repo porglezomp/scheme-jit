@@ -1269,6 +1269,7 @@ class BasicBlock(BB):
         for inst in self.instructions:
             env.stats.inst_type_count[type(inst)] += 1
             env.stats.inst_count[id(inst)] += 1
+            next_bb = None
             if isinstance(inst, CallInst):
                 yield from inst.run_call(env)
             else:

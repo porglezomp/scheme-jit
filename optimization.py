@@ -59,7 +59,8 @@ class FunctionOptimizer:
         for i, inst in enumerate(block.instructions):
             abstract.append((copy.copy(types), copy.copy(values)))
             inst.run_abstract(env, types, values)
-            block.instructions[i] = inst.constant_fold(types, values)
+            inst = inst.constant_fold(types, values)
+            block.instructions[i] = inst
             if isinstance(inst, CallInst):
                 func = values[inst.func]
                 if (isinstance(func, SFunction)
@@ -314,17 +315,28 @@ class FunctionOptimizer:
         name = func.name.name
         if name.startswith('inst/'):
             return True
-        # @TODO: An actual inlining heuristic!
-        SHOULD_INLINE = (
+
+        ALWAYS_INLINE = (
             'trap', 'trace', 'breakpoint', 'assert', 'typeof',
             'number?', 'symbol?', 'vector?', 'function?', 'bool?',
-            'not',
-            'pair?', 'nil?',
-            'symbol=',
-            # '+', '-', '*', '/', '%',
-            # 'pointer=', 'number=', 'number<',
-            # 'vector-length', 'vector-index', 'vector-set!',
-            # '<', '!=', '>', '<=', '>=',
-            # 'cons', 'car', 'cdr',
         )
-        return name in SHOULD_INLINE
+        if name in ALWAYS_INLINE:
+            return True
+
+        if not types:
+            return False
+
+        SHOULD_INLINE = (
+            'pair?', 'nil?', 'symbol=',
+            '+', '-', '*', '/', '%',
+            'pointer=', 'number=', 'number<',
+            'vector-length', 'vector-index', 'vector-set!',
+            '<', '!=', '>', '<=', '>=',
+            'cons', 'car', 'cdr',
+        )
+        if not any(t == SchemeObject for t in types) and name in SHOULD_INLINE:
+            return True
+
+        spec = func.get_specialized(types)
+        icount = sum(len(b.instructions) for b in spec.blocks())
+        return icount <= 10
