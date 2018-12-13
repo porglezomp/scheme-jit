@@ -59,10 +59,9 @@ def make_branch_func_object() -> Tuple[Function, Tuple[BasicBlock, ...]]:
 
 
 def get_builtins() -> bytecode.EvalEnv:
-    env = bytecode.EvalEnv()
+    env = bytecode.EvalEnv(bytecode_jit=True)
     runner.add_intrinsics(env)
-    runner.add_builtins(env, optimize=True)
-    # runner.add_prelude(env, optimize=True)
+    runner.add_builtins(env)
     return env
 
 

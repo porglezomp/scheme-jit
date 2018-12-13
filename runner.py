@@ -70,9 +70,9 @@ def add_intrinsics(eval_env: EvalEnv) -> None:
     env[SSym('inst/number<')] = binop(SSym('inst/number<'), Binop.NUM_LT)
 
 
-def add_builtins(env: EvalEnv, optimize: bool = False) -> None:
+def add_builtins(env: EvalEnv) -> None:
     """Add builtins to the environment."""
-    code = sexp.parse("""
+    run(env, """
     (define (trap) (inst/trap))
     (define (trace x) (inst/trace x))
     (define (breakpoint) (inst/breakpoint))
@@ -160,29 +160,12 @@ def add_builtins(env: EvalEnv, optimize: bool = False) -> None:
       (if (number= n 0)
         (inst/alloc 0)
         (vector-make/recur n 0 (inst/alloc n) x)))
-    """)
-    tail_calls = None
-    if env.optimize_tail_calls:
-        tail_call_finder = TailCallFinder()
-        tail_call_finder.visit(code)
-        tail_calls = tail_call_finder.tail_calls
-
-    emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
-    for definition in code:
-        assert isinstance(definition, SFunction)
-        emitter.visit(definition)
-        _add_func_to_env(definition, emitter, env)
-        assert definition.code
-        if optimize:
-            if env.print_optimizations:
-                print(f"Optimizing builtin {definition.name}...")
-            opt = FunctionOptimizer(definition.code)
-            opt.optimize(env)
+    """, context="builtin")
 
 
-def add_prelude(env: EvalEnv, optimize: bool = False) -> None:
+def add_prelude(env: EvalEnv) -> None:
     """Add prelude functions to the environment."""
-    code = sexp.parse("""
+    run(env, """
     ;; The loop body for vector=, not to be used on its own
     (define (vector=/recur x y n end)
       (if (= n end)
@@ -220,30 +203,31 @@ def add_prelude(env: EvalEnv, optimize: bool = False) -> None:
     (define (cons x l) [x l])
     (define (car l) (vector-index l 0))
     (define (cdr l) (vector-index l 1))
-    """)
-    tail_calls = None
-    if env.optimize_tail_calls:
-        tail_call_finder = TailCallFinder()
-        tail_call_finder.visit(code)
-        tail_calls = tail_call_finder.tail_calls
 
-    emitter = FunctionEmitter(env._global_env, tail_calls=tail_calls)
-    for definition in code:
-        assert isinstance(definition, SFunction)
-        emitter.visit(definition)
-        _add_func_to_env(definition, emitter, env)
-        assert definition.code
-        if optimize:
-            if env.print_optimizations:
-                print(f"Optimizing prelude {definition.name}...")
-            opt = FunctionOptimizer(definition.code)
-            opt.optimize(env)
+    (define (list/recur vec n end place)
+      (assert (<= n end))
+      (if (number= n end)
+        (begin
+          (vector-set! place 0 (vector-index vec n))
+          (vector-set! place 1 []))
+        (begin
+          (vector-set! place 0 (vector-index vec n))
+          (vector-set! place 1 (inst/alloc 2))
+          (list/recur vec (+ n 1) end (vector-index place 1)))))
+    (define (list/let vec place)
+      (list/recur vec 0 (- (vector-length vec) 1) place)
+      place)
+    (define (list vec)
+      (if (nil? vec)
+        []
+        (list/let vec (inst/alloc 2))))
+    """, context="prelude")
 
 
 eval_names = emit_IR.name_generator('__eval_expr')
 
 
-def run_code(env: EvalEnv, code: SExp) -> Value:
+def run_code(env: EvalEnv, code: SExp, context: str = "top-level") -> Value:
     """Run a piece of code in an environment, returning its result."""
     if isinstance(code, sexp.SFunction):
         tail_calls = None
@@ -258,7 +242,7 @@ def run_code(env: EvalEnv, code: SExp) -> Value:
         assert code.code
         if env.bytecode_jit:
             if env.print_optimizations:
-                print(f"Optimizing top-level function {code.name}...")
+                print(f"Optimizing {context} function {code.name}...")
             opt = FunctionOptimizer(code.code)
             opt.optimize(env)
         return env._global_env[code.name]
@@ -283,7 +267,7 @@ def _add_func_to_env(func: sexp.SFunction, func_emitter: FunctionEmitter,
     env._global_env[func.name] = func
 
 
-def run(env: EvalEnv, text: str) -> Value:
+def run(env: EvalEnv, text: str, context: str = "top-level") -> Value:
     """
     Run a piece of code in an environment, returning its result.
 
@@ -299,5 +283,5 @@ def run(env: EvalEnv, text: str) -> Value:
     code = sexp.parse(text)
     result: Value = sexp.SVect([])
     for part in code:
-        result = run_code(env, part)
+        result = run_code(env, part, context=context)
     return result
