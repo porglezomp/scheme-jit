@@ -28,7 +28,7 @@ def main() -> None:
         print_specializations=args.print_specializations,
         print_optimizations=args.print_optimizations,
         inline_threshold=args.inline_count,
-        specialization_threshold=args.specialize_count[0],
+        specialization_threshold=args.specialize_count,
     )
     start = time.perf_counter()
     runner.add_intrinsics(env)
@@ -49,7 +49,7 @@ def main() -> None:
 
 class Output:
     def __init__(self, args: argparse.Namespace) -> None:
-        self.name = args.output[0]
+        self.name = args.output
         self.file = sys.stdout
 
     def __enter__(self) -> Output:
@@ -198,18 +198,18 @@ def parse_args() -> argparse.Namespace:
         help="log when optimizations are performed")
     parser.add_argument(
         '-o', '--output', metavar='FILE',
-        nargs=1, type=str, default='-',
+        type=str, default='-',
         help="output the stats to a file")
     parser.add_argument(
         '-m', '--machine-readable', action='store_true',
         help="output stats as json")
     parser.add_argument(
         '-i', '--inline-count', metavar='COUNT',
-        nargs=1, type=int, default=10,
+        type=int, default=10,
         help="the threshold to stop inlining at (default 10)")
     parser.add_argument(
         '-c', '--specialize-count', metavar='COUNT',
-        nargs=1, type=int, default=2,
+        type=int, default=2,
         help="the number of executions before creating a specialization "
              "(default 2)")
 
