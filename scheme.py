@@ -21,11 +21,15 @@ def main() -> None:
         with open(args.filename) as f:
             prog_text = f.read()
 
-    env = bytecode.EvalEnv(optimize_tail_calls=args.tail_calls,
-                           jit=args.jit,
-                           bytecode_jit=args.bytecode_jit,
-                           print_specializations=args.print_specializations,
-                           print_optimizations=args.print_optimizations)
+    env = bytecode.EvalEnv(
+        optimize_tail_calls=args.tail_calls,
+        jit=args.jit,
+        bytecode_jit=args.bytecode_jit,
+        print_specializations=args.print_specializations,
+        print_optimizations=args.print_optimizations,
+        inline_threshold=args.inline_count,
+        specialization_threshold=args.specialize_count[0],
+    )
     start = time.perf_counter()
     runner.add_intrinsics(env)
     runner.add_builtins(env)
@@ -64,6 +68,8 @@ def report_stats_json(args: argparse.Namespace, env: bytecode.EvalEnv) -> None:
             'tail_calls': env.optimize_tail_calls,
             'ast_jit': env.jit,
             'bytecode_jit': env.bytecode_jit,
+            'inline_threshold': env.inline_threshold,
+            'specialization_threshold': env.specialization_threshold,
         }
     }
     if args.function_stats:
@@ -191,11 +197,21 @@ def parse_args() -> argparse.Namespace:
         '-O', '--print-optimizations', action='store_true',
         help="log when optimizations are performed")
     parser.add_argument(
-        '-o', '--output', nargs=1, default='-',
+        '-o', '--output', metavar='FILE',
+        nargs=1, type=str, default='-',
         help="output the stats to a file")
     parser.add_argument(
         '-m', '--machine-readable', action='store_true',
         help="output stats as json")
+    parser.add_argument(
+        '-i', '--inline-count', metavar='COUNT',
+        nargs=1, type=int, default=10,
+        help="the threshold to stop inlining at (default 10)")
+    parser.add_argument(
+        '-c', '--specialize-count', metavar='COUNT',
+        nargs=1, type=int, default=2,
+        help="the number of executions before creating a specialization "
+             "(default 2)")
 
     return parser.parse_args()
 
