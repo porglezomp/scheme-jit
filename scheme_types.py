@@ -326,15 +326,15 @@ class FunctionTypeAnalyzer(Visitor):
 
     def visit_SCall(self, call: sexp.SCall) -> None:
         super().visit_SCall(call)
-        if self.expr_type_known(call.func):
+        if (isinstance(call.func, sexp.SSym)
+                and call.func in _builtin_const_exprs):
+            _builtin_const_exprs[call.func](self).eval_expr(call)
+        elif self.expr_type_known(call.func):
             func_type = self.get_expr_type(call.func)
             if isinstance(func_type, SchemeFunctionType):
                 self.set_expr_type(call, func_type.return_type)
             else:
                 self.set_expr_type(call, SchemeObject)
-        elif (isinstance(call.func, sexp.SSym)
-                and call.func in _builtin_const_exprs):
-            _builtin_const_exprs[call.func](self).eval_expr(call)
         else:
             self.set_expr_type(call, SchemeObject)
 
@@ -537,16 +537,6 @@ class IsFunction(TypeQuery):
 @_register_const_call_expr('bool?')
 class IsBool(TypeQuery):
     query_type = SchemeBool
-
-
-@_register_const_call_expr('pair?')
-class IsPair(TypeQuery):
-    query_type = SchemeVectType(2)
-
-
-@_register_const_call_expr('nil?')
-class IsNil(TypeQuery):
-    query_type = SchemeVectType(0)
 
 
 @_register_const_call_expr('symbol=')
