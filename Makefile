@@ -22,7 +22,7 @@ all: $(benchmark_targets)
 	@mkdir -p data
 	./scheme.py $(FLAGS) \
 		-fsa -m -o data/$*_$(FLAGS).json benchmarks/$*.scm > benchmarks/$*.out
-	@diff -q benchmarks/$*.correct benchmarks/$*.out
+	@diff benchmarks/$*.correct benchmarks/$*.out
 
 .PHONY: all clean
 
