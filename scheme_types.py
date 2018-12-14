@@ -326,15 +326,15 @@ class FunctionTypeAnalyzer(Visitor):
 
     def visit_SCall(self, call: sexp.SCall) -> None:
         super().visit_SCall(call)
-        if (isinstance(call.func, sexp.SSym)
-                and call.func in _builtin_const_exprs):
-            _builtin_const_exprs[call.func](self).eval_expr(call)
-        elif self.expr_type_known(call.func):
+        if self.expr_type_known(call.func):
             func_type = self.get_expr_type(call.func)
             if isinstance(func_type, SchemeFunctionType):
                 self.set_expr_type(call, func_type.return_type)
             else:
                 self.set_expr_type(call, SchemeObject)
+        elif (isinstance(call.func, sexp.SSym)
+                and call.func in _builtin_const_exprs):
+            _builtin_const_exprs[call.func](self).eval_expr(call)
         else:
             self.set_expr_type(call, SchemeObject)
 
@@ -412,6 +412,8 @@ _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
     sexp.SSym('vector-make/recur'): (
         SchemeFunctionType(4, SchemeVectType(None))),
     sexp.SSym('vector-make'): SchemeFunctionType(2, SchemeVectType(None)),
+
+    sexp.SSym('list'): SchemeFunctionType(1, SchemeVectType(None)),
 
     sexp.SSym('cons'): SchemeVectType(2)
 }
