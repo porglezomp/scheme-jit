@@ -1577,7 +1577,7 @@ bb0:
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
-    def test_remove_pair_assertion(self) -> None:
+    def test_no_remove_pair_assertion(self) -> None:
         code = '''(define (spam vec) (assert (pair? vec)))'''
         optimized = self.get_optimized_func_bytecode(
             code,
@@ -1589,11 +1589,15 @@ bb0:
         expected = '''
 function (? vec) entry=bb0
 bb0:
-  return 0
+  v0 = lookup 'assert
+  v1 = lookup 'pair?
+  v2 = call v1 (vec) (vector[2])
+  v3 = call v0 (v2) (bool)
+  return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 
-    def test_remove_nil_assertion(self) -> None:
+    def test_no_remove_nil_assertion(self) -> None:
         code = '''(define (spam vec) (assert (nil? vec)))'''
         optimized = self.get_optimized_func_bytecode(
             code,
@@ -1605,7 +1609,11 @@ bb0:
         expected = '''
 function (? vec) entry=bb0
 bb0:
-  return 0
+  v0 = lookup 'assert
+  v1 = lookup 'nil?
+  v2 = call v1 (vec) (vector[0])
+  v3 = call v0 (v2) (bool)
+  return v3
         '''
         self.assertEqual(expected.strip(), optimized.strip())
 

@@ -413,6 +413,8 @@ _BUILTINS_FUNC_TYPES: Dict[sexp.SSym, SchemeObjectType] = {
         SchemeFunctionType(4, SchemeVectType(None))),
     sexp.SSym('vector-make'): SchemeFunctionType(2, SchemeVectType(None)),
 
+    sexp.SSym('list'): SchemeFunctionType(1, SchemeVectType(None)),
+
     sexp.SSym('cons'): SchemeVectType(2)
 }
 
@@ -535,16 +537,6 @@ class IsFunction(TypeQuery):
 @_register_const_call_expr('bool?')
 class IsBool(TypeQuery):
     query_type = SchemeBool
-
-
-@_register_const_call_expr('pair?')
-class IsPair(TypeQuery):
-    query_type = SchemeVectType(2)
-
-
-@_register_const_call_expr('nil?')
-class IsNil(TypeQuery):
-    query_type = SchemeVectType(0)
 
 
 @_register_const_call_expr('symbol=')
